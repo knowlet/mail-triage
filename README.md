@@ -117,3 +117,10 @@ The [CI workflow](.github/workflows/ci.yml) runs on pull requests and pushes to
 installs the locked dependencies and runs the same `make check` used locally.
 Tests deny network/DNS access and use scripted model backends; no external email
 integration or real inference is enabled in CI. Action revisions and uv are pinned.
+
+## License status
+
+No project license has been selected or added. Public source availability does
+not mean this project is offered under an open-source license. Selecting a license
+for the original code remains an owner decision; upstream dependency or engine
+licenses are separate and have not been adopted for this project.
