@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 from pydantic import SecretStr
 
+from mail_triage.assemblyline_results import PollingPolicy
 from mail_triage.connections import (
     ConnectorRun,
     ConnectorSettings,
@@ -29,7 +31,7 @@ DEMO_ATTACHMENT_ID = "original-attachment"
 DEMO_TOKEN = "synthetic-token-not-a-credential"
 
 
-def demo_settings() -> ConnectorSettings:
+def demo_settings(*, poll_assemblyline: bool = False) -> ConnectorSettings:
     def endpoint(service: str, suffix: int) -> EndpointPolicy:
         # Documentation-only addresses, never contacted by this demonstration.
         return EndpointPolicy(
@@ -45,7 +47,12 @@ def demo_settings() -> ConnectorSettings:
             endpoint=endpoint("graph", 10),
         ),
         assemblyline=AssemblylineConfig(
-            enabled=True, username="synthetic-reviewer", endpoint=endpoint("assemblyline", 20)
+            enabled=True,
+            username="synthetic-reviewer",
+            endpoint=endpoint("assemblyline", 20),
+            polling=PollingPolicy(
+                enabled=poll_assemblyline, interval_seconds=1, deadline_seconds=5, max_polls=3
+            ),
         ),
         sublime=SublimeConfig(
             enabled=True,
@@ -87,6 +94,7 @@ def demo_transport(original: bytes, calls: list[dict[str, object]]) -> httpx.Moc
                 "logical_host": host,
                 "path": request.url.raw_path.decode("ascii"),
                 "request_bytes": len(request.content),
+                "requested_at": datetime.now(UTC).isoformat(),
             }
         )
         if host == "graph.example.invalid" and request.method == "GET":
@@ -114,6 +122,53 @@ def demo_transport(original: bytes, calls: list[dict[str, object]]) -> httpx.Moc
                     "api_response": {"sid": "synthetic-submission"},
                 },
             )
+        if host == "assemblyline.example.invalid" and request.method == "GET":
+            completion_path = "/api/v4/submission/is_completed/synthetic-submission/"
+            if request.url.path == completion_path:
+                # One real one-second asynchronous interval separates the two mock checks.
+                checks = sum(item["path"] == completion_path for item in calls)
+                return httpx.Response(
+                    200,
+                    json={
+                        "api_status_code": 200,
+                        "api_error_message": "",
+                        "api_response": checks > 1,
+                    },
+                )
+            if request.url.path == "/api/v4/submission/full/synthetic-submission/":
+                digest = hashlib.sha256(original).hexdigest()
+                return httpx.Response(
+                    200,
+                    json={
+                        "api_status_code": 200,
+                        "api_error_message": "",
+                        "api_response": {
+                            "sid": "synthetic-submission",
+                            "state": "completed",
+                            "max_score": 350,
+                            "file_count": 1,
+                            "error_count": 0,
+                            "files": [
+                                {"name": "original.eml", "sha256": digest, "size": len(original)}
+                            ],
+                            "results": {
+                                "synthetic-result": {
+                                    "sha256": digest,
+                                    "partial": False,
+                                    "result": {"score": 350},
+                                    "response": {
+                                        "service_name": "SyntheticStatic",
+                                        "service_version": "1.0",
+                                    },
+                                }
+                            },
+                            "errors": {},
+                            "missing_result_keys": [],
+                            "missing_error_keys": [],
+                            "missing_file_keys": [],
+                        },
+                    },
+                )
         if host == "sublime.example.invalid" and request.url.path == "/v0/messages/analyze":
             rules = json.loads(request.content)["rules"]
             return httpx.Response(
@@ -168,7 +223,7 @@ def demo_transport(original: bytes, calls: list[dict[str, object]]) -> httpx.Moc
     return httpx.MockTransport(handler)
 
 
-async def run_demo(output: Path) -> ConnectorRun:
+async def run_demo(output: Path, *, poll_assemblyline: bool = False) -> ConnectorRun:
     fixture = Path(__file__).resolve().parents[2] / "fixtures" / "synthetic-phish.eml"
     original = read_eml(fixture, Limits())
     if hashlib.sha256(original).hexdigest() != FIXTURE_SHA256:
@@ -176,7 +231,7 @@ async def run_demo(output: Path) -> ConnectorRun:
     calls: list[dict[str, object]] = []
     dummy = SecretStr(DEMO_TOKEN)
     result = await ingest_graph_case(
-        demo_settings(),
+        demo_settings(poll_assemblyline=poll_assemblyline),
         ExplicitCredentials(
             graph_token=dummy, assemblyline_key=dummy, sublime_key=dummy, model_key=dummy
         ),

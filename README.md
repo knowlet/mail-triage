@@ -44,7 +44,7 @@ mailbox read or email action. It does not import the configured connector flow.
 | Sender OSINT/gateway reputation | `NOT_RUN` | Not implemented |
 | Gateway spam rate | `UNKNOWN` | `UNKNOWN`; no named telemetry/denominator/window |
 | Outlook reports | `NOT_RUN` | Three selected Graph GETs; no mailbox listing or token acquisition |
-| Assemblyline | `NOT_RUN` | One selected EML submission; receipt ID only, no polling/results claim |
+| Assemblyline | `NOT_RUN` | One selected EML submission; optional bounded polling and separate untrusted result readback |
 | Sublime | `NOT_RUN` | One raw-message analysis request with explicit operator-authored rules |
 | Pydantic AI | `NOT_RUN` | Optional single bounded self-hosted chat-completions request; validated finding citations |
 | DSPy | `NOT_RUN` | Separate offline authored held-out evaluation; no live optimization |
@@ -78,6 +78,23 @@ case can submit again; there is no global deduplication system.
 
 The captured [connector CLI output](demo/connectors-cli-output.json) and
 [connector case](demo/connectors-case/connectors.json) show the mocked flow.
+They preserve the earlier six-exchange demonstration. To exercise result readback
+as well, use another new directory:
+
+```sh
+.venv/bin/mail-triage connect-demo --assemblyline-poll --out reports/mock-assemblyline
+```
+
+This adds two mocked completion GETs, separated by a real one-second interval,
+and one full-result GET: nine local mock exchanges in total. Inspect the captured
+[polling CLI output](demo/assemblyline-cli-output.json),
+[analysis/provenance](demo/assemblyline-case/assemblyline-analysis.json) and
+[request log](demo/assemblyline-case/mock-requests.json). A saved receipt precedes
+polling; the result records the external raw score and error/missing-result
+counters separately from authentication and content evidence. `COMPLETED` means
+the bounded readback checks passed, not that the email is safe or that its sender
+is trusted. The mock score is not a phishing probability or an accuracy estimate.
+
 The original [offline JSON](demo/offline-case/report.json),
 [offline HTML](demo/offline-case/report.html),
 [preserved fixture bytes](demo/offline-case/original.eml) and
@@ -110,6 +127,33 @@ credential-file lookup. Do not put credentials in the config, command arguments,
 reports or repository. `--allow-egress` is required for the configured CLI path;
 ordinary `triage` never gains egress from configuration.
 
+Assemblyline polling is separately opt-in through `assemblyline.polling.enabled`;
+it defaults to `false`. Enabled polling uses a 2-second interval, a 60-second
+overall deadline and at most 30 completion checks by default. Limits and outcomes
+are described in [the Assemblyline contract](docs/integrations.md#assemblyline-submission-and-readback).
+
+After a successful submission, `assemblyline-submission.json` preserves the SID,
+original hash, endpoint/pin binding and execution mode before polling begins.
+An existing case with that receipt can be read again without another POST:
+
+```sh
+.venv/bin/mail-triage assemblyline-readback --config operator-connectors.json \
+  --case reports/existing-configured-case --allow-egress --secrets-stdin
+```
+
+Supply only `assemblyline_key` in the stdin JSON for this command. The config
+must enable Assemblyline and its polling policy. Readback checks the saved receipt,
+original/report hash, endpoint and pin, and mode before any request; a mock case
+cannot be used for configured live readback. It performs GETs only, never Graph
+retrieval, submission, Sublime analysis or model inference. Each explicit run adds
+an `assemblyline-readback-<id>.json` history file, atomically replaces the latest
+`assemblyline-analysis.json`, and separately refreshes the report snapshots.
+
+Connector commands exit 0 for completion, 3 for recorded partial/failure/timeout
+outcomes, 2 for rejected input/configuration, and 130 for cancellation. During
+configured polling, Ctrl-C records `CANCELLED` and preserves the receipt; it stops
+local readback and later stages, without cancelling the server's job or resubmitting.
+
 Transport enforces exact origin/method/path, an exact IP pin, TLS verification,
 Host/SNI preservation, byte/time bounds, and no redirects, retries or ambient
 proxies. Private pins require explicit opt-in; loopback/link-local/multicast/
@@ -124,6 +168,10 @@ credential separation. Pydantic AI `FunctionModel`/DSPy `DummyLM` tests are labe
 `STUB`; connector tests and the connector demo use `MOCK`. No real LLM, Outlook,
 Assemblyline or Sublime connection is claimed. Optional model tests require the
 model dependency extra.
+Polling tests additionally cover strict completion booleans, SID/original-hash
+binding, partial/error/missing-result counters, bounded waits, cancellation and
+GET-only recovery without a second submission. Current test totals belong to the
+actual verification output for the checked revision.
 
 This CLI prototype has no production API, queue, case database, RBAC, encryption,
 retention system or tenant setup. Application parser limits are not an OS sandbox.

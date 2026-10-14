@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
+from mail_triage.assemblyline_results import PollingPolicy
 from mail_triage.transport import ConnectorError, EndpointPolicy, build_client
 
 MAX_INPUT_BYTES = 5 * 1024 * 1024
@@ -37,6 +38,7 @@ Reason = Literal[
     "response_too_large",
     "invalid_response",
     "untrusted_response_observed_no_safety_or_identity_verdict",
+    "cancelled_before_dispatch",
 ]
 
 
@@ -48,6 +50,7 @@ class AssemblylineConfig(SettingsRecord):
     enabled: bool = False
     endpoint: EndpointPolicy | None = None
     username: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.@-]{1,128}$")] | None = None
+    polling: PollingPolicy = Field(default_factory=PollingPolicy)
 
     @model_validator(mode="after")
     def enabled_requires_configuration(self) -> Self:

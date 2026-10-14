@@ -16,7 +16,13 @@
   "assemblyline": {
     "enabled": false,
     "endpoint": null,
-    "username": null
+    "username": null,
+    "polling": {
+      "enabled": false,
+      "interval_seconds": 2,
+      "deadline_seconds": 60,
+      "max_polls": 30
+    }
   },
   "sublime": {
     "enabled": false,

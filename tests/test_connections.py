@@ -11,8 +11,9 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from mail_triage.assemblyline_results import PollingPolicy
 from mail_triage.cli import main
-from mail_triage.connections import ExplicitCredentials, ingest_graph_case
+from mail_triage.connections import ExplicitCredentials, ingest_graph_case, resume_assemblyline_case
 from mail_triage.contract_demo import (
     DEMO_ATTACHMENT_ID,
     DEMO_MESSAGE_ID,
@@ -260,3 +261,279 @@ def test_live_cli_requires_both_opt_in_flags_without_reading_config(tmp_path):
     with pytest.raises(SystemExit) as exc:
         main(args[:-2])
     assert exc.value.code == 2
+
+
+def polling_settings(*, max_polls=3):
+    settings = demo_settings(poll_assemblyline=True)
+    return settings.model_copy(
+        update={
+            "assemblyline": settings.assemblyline.model_copy(
+                update={
+                    "polling": PollingPolicy(
+                        enabled=True, max_polls=max_polls, deadline_seconds=5, interval_seconds=1
+                    )
+                }
+            )
+        }
+    )
+
+
+def test_polling_cli_demo_nine_mock_exchanges_with_real_interval_and_no_probability(
+    tmp_path, capsys
+):
+    from datetime import datetime
+
+    output = tmp_path / "case"
+    assert main(["connect-demo", "--assemblyline-poll", "--out", str(output)]) == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["assemblyline_analysis"] == "COMPLETED"
+    records = json.loads((output / "mock-requests.json").read_text())
+    assert len(records) == 9
+    checks = [item for item in records if "/is_completed/" in item["path"]]
+    assert len(checks) == 2
+    assert (
+        datetime.fromisoformat(checks[1]["requested_at"])
+        - datetime.fromisoformat(checks[0]["requested_at"])
+    ).total_seconds() >= 0.99
+    assert len([item for item in records if item["path"] == "/api/v4/submit/"]) == 1
+    analysis = json.loads((output / "assemblyline-analysis.json").read_text())
+    assert analysis["execution_mode"] == "MOCK"
+    assert analysis["analysis"]["raw_max_score"] == 350
+    assert len(analysis["requests"]) == 3
+    assert all(item["response_sha256"] for item in analysis["requests"])
+    report = Report.model_validate_json((output / "report.json").read_bytes())
+    assert (
+        report.authentication.spf.status == report.reputation.gateway_spam_rate.status == "UNKNOWN"
+    )
+    assert any(
+        "neither a phishing probability" in value
+        for value in report.reputation.assemblyline.observations
+    )
+
+
+def test_pending_then_get_only_resume_preserves_receipt_bytes_and_each_run_provenance(tmp_path):
+    case = tmp_path / "case"
+    calls = []
+    settings = polling_settings(max_polls=1)
+    inner = demo_transport(FIXTURE.read_bytes(), calls)
+    first = execute(case, settings=settings, inner=inner)
+    assert first.status == "PARTIAL"
+    assert first.assemblyline.status == "OBSERVED"
+    assert first.assemblyline_analysis.status == "TIMED_OUT"
+    assert first.assemblyline_analysis.reason == "poll_limit_reached"
+    receipt = (case / "assemblyline-submission.json").read_bytes()
+    before = (case / "original.eml").read_bytes()
+    assert len(list(case.glob("assemblyline-readback-*.json"))) == 1
+    offset = len(calls)
+    resumed = asyncio.run(resume_assemblyline_case(settings, credentials(), case=case, inner=inner))
+    assert resumed.status == "COMPLETED"
+    assert len(calls[offset:]) == 2
+    assert all(item["method"] == "GET" for item in calls[offset:])
+    assert (case / "assemblyline-submission.json").read_bytes() == receipt
+    assert (case / "original.eml").read_bytes() == before
+    assert len(list(case.glob("assemblyline-readback-*.json"))) == 2
+    assert json.loads((case / "connectors.json").read_text())["status"] == "COMPLETED"
+
+
+@pytest.mark.parametrize("changed", ["original", "pin", "mode", "symlink"])
+def test_readback_identity_mismatch_rejected_before_network(tmp_path, changed):
+    case = tmp_path / "case"
+    execute(case)
+    settings = polling_settings()
+    selected_case = case
+    if changed == "original":
+        (case / "original.eml").write_bytes(FIXTURE.read_bytes() + b"modified")
+    elif changed == "pin":
+        endpoint = settings.assemblyline.endpoint.model_copy(update={"pinned_ip": "192.0.2.21"})
+        settings = settings.model_copy(
+            update={"assemblyline": settings.assemblyline.model_copy(update={"endpoint": endpoint})}
+        )
+    elif changed == "mode":
+        value = json.loads((case / "assemblyline-submission.json").read_bytes())
+        value["execution_mode"] = "CONFIGURED"
+        (case / "assemblyline-submission.json").write_text(json.dumps(value))
+    else:
+        selected_case = tmp_path / "link"
+        selected_case.symlink_to(case, target_is_directory=True)
+    calls = []
+    with pytest.raises(ConnectorError, match="identity_mismatch|case_rejected"):
+        asyncio.run(
+            resume_assemblyline_case(
+                settings,
+                credentials(),
+                case=selected_case,
+                inner=demo_transport(FIXTURE.read_bytes(), calls),
+            )
+        )
+    assert calls == []
+
+
+def test_explicit_poll_cancel_retains_receipt_and_skips_later_posts(tmp_path, monkeypatch, capsys):
+    calls = []
+    normal = demo_transport(FIXTURE.read_bytes(), calls)
+    case = tmp_path / "case"
+
+    async def run():
+        cancel = asyncio.Event()
+
+        async def handler(request):
+            if "/is_completed/" in request.url.path:
+                assert (case / "assemblyline-submission.json").exists()
+                cancel.set()
+            return await normal.handle_async_request(request)
+
+        return await ingest_graph_case(
+            polling_settings(),
+            credentials(),
+            message_id=DEMO_MESSAGE_ID,
+            attachment_id=DEMO_ATTACHMENT_ID,
+            output=case,
+            inner=httpx.MockTransport(handler),
+            cancel=cancel,
+        )
+
+    result = asyncio.run(run())
+    assert result.status == "PARTIAL"
+    assert result.assemblyline_analysis.status == "CANCELLED"
+    assert result.sublime.status == result.model.status == "NOT_RUN"
+    assert len([item for item in calls if item["method"] == "POST"]) == 1
+    assert (case / "assemblyline-analysis.json").exists()
+    from mail_triage import connector_cli
+
+    async def cancelled_demo(*args, **kwargs):
+        return result
+
+    monkeypatch.setattr(connector_cli, "run_demo", cancelled_demo)
+    assert main(["connect-demo", "--out", str(tmp_path / "unused")]) == 130
+    assert json.loads(capsys.readouterr().out)["cancelled"] is True
+    # GET-only recovery cannot pretend skipped downstream stages were completed.
+    resumed = asyncio.run(
+        resume_assemblyline_case(
+            polling_settings(),
+            credentials(),
+            case=case,
+            inner=demo_transport(FIXTURE.read_bytes(), calls),
+        )
+    )
+    assert resumed.status == "COMPLETED"
+    assert json.loads((case / "connectors.json").read_text())["status"] == "PARTIAL"
+
+
+def test_task_cancel_during_readback_preserves_receipt_for_get_only_recovery(tmp_path):
+    case = tmp_path / "case"
+    calls = []
+    normal = demo_transport(FIXTURE.read_bytes(), calls)
+
+    async def run():
+        entered = asyncio.Event()
+
+        async def handler(request):
+            if "/is_completed/" in request.url.path:
+                assert (case / "assemblyline-submission.json").exists()
+                entered.set()
+                await asyncio.Event().wait()
+            return await normal.handle_async_request(request)
+
+        task = asyncio.create_task(
+            ingest_graph_case(
+                polling_settings(),
+                credentials(),
+                message_id=DEMO_MESSAGE_ID,
+                attachment_id=DEMO_ATTACHMENT_ID,
+                output=case,
+                inner=httpx.MockTransport(handler),
+            )
+        )
+        await asyncio.wait_for(entered.wait(), timeout=2)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(run())
+    assert len([item for item in calls if item["method"] == "POST"]) == 1
+    assert not (case / "connectors.json").exists()
+    report = Report.model_validate_json((case / "report.json").read_bytes())
+    assert report.reputation.assemblyline.status == "OBSERVED"
+    resumed_calls = []
+    resumed = asyncio.run(
+        resume_assemblyline_case(
+            polling_settings(),
+            credentials(),
+            case=case,
+            inner=demo_transport(FIXTURE.read_bytes(), resumed_calls),
+        )
+    )
+    assert resumed.status == "COMPLETED"
+    assert all(item["method"] == "GET" for item in resumed_calls)
+
+
+def test_readback_cli_consumes_only_explicit_al_key_and_never_posts(tmp_path, monkeypatch, capsys):
+    from mail_triage import connector_cli
+
+    case = tmp_path / "case"
+    execute(case)
+    config = tmp_path / "config.json"
+    config.write_text(polling_settings().model_dump_json())
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"assemblyline_key": DEMO_TOKEN})))
+    calls = []
+
+    async def local_only(settings, values, **kwargs):
+        assert kwargs.pop("allow_egress") is True
+        assert values.graph_token is None
+        return await resume_assemblyline_case(
+            settings, values, inner=demo_transport(FIXTURE.read_bytes(), calls), **kwargs
+        )
+
+    monkeypatch.setattr(connector_cli, "resume_assemblyline_case", local_only)
+    assert (
+        main(
+            [
+                "assemblyline-readback",
+                "--config",
+                str(config),
+                "--case",
+                str(case),
+                "--allow-egress",
+                "--secrets-stdin",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["status"] == "COMPLETED"
+    assert len(calls) == 3 and all(item["method"] == "GET" for item in calls)
+
+
+def test_cancellation_after_sublime_dispatch_prevents_model_post(tmp_path):
+    calls = []
+    normal = demo_transport(FIXTURE.read_bytes(), calls)
+
+    async def run():
+        cancel = asyncio.Event()
+
+        async def handler(request):
+            response = await normal.handle_async_request(request)
+            if "/is_completed/" in request.url.path:
+                return httpx.Response(
+                    200,
+                    json={"api_status_code": 200, "api_error_message": "", "api_response": True},
+                )
+            if request.headers["host"] == "sublime.example.invalid":
+                cancel.set()
+            return response
+
+        return await ingest_graph_case(
+            polling_settings(),
+            credentials(),
+            message_id=DEMO_MESSAGE_ID,
+            attachment_id=DEMO_ATTACHMENT_ID,
+            output=tmp_path / "case",
+            inner=httpx.MockTransport(handler),
+            cancel=cancel,
+        )
+
+    result = asyncio.run(run())
+    assert result.assemblyline_analysis.status == "COMPLETED"
+    assert result.sublime.status == "OBSERVED"
+    assert result.model.status == "NOT_RUN"
+    assert result.status == "PARTIAL"
+    assert not any(item["logical_host"] == "model.example.invalid" for item in calls)

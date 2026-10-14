@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 import os
 import tempfile
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
+from mail_triage.assemblyline_results import PollingReport, poll_submission
 from mail_triage.cli import build_report
 from mail_triage.graph_ingest import GraphAdapter, GraphAttachmentMetadata, GraphBundle, GraphConfig
+from mail_triage.ingest import read_eml
 from mail_triage.model_adapter import ModelConfig, configured_review
 from mail_triage.model_workflow import ModelReview
 from mail_triage.reporting import render_html, write_case
-from mail_triage.schemas import Check
+from mail_triage.schemas import Check, Limits, Report
 from mail_triage.service_adapters import (
     AssemblylineAdapter,
     AssemblylineConfig,
@@ -69,6 +75,17 @@ class ConnectorRun(BaseModel):
     assemblyline: ConnectorResult
     sublime: ConnectorResult
     model: ModelReview
+    assemblyline_analysis: PollingReport | None = None
+
+
+class SavedAssemblylineSubmission(BaseModel):
+    """Local receipt binding for GET-only recovery, not a trust attestation."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: Literal["1.0"] = "1.0"
+    execution_mode: Literal["MOCK", "CONFIGURED"]
+    endpoint_policy_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    receipt: ConnectorResult
 
 
 def _save(path: Path, contents: bytes, *, replace: bool = False) -> None:
@@ -115,6 +132,142 @@ def _source(bundle: GraphBundle, mock: bool) -> GraphSource:
     )
 
 
+def _endpoint_identity(config: AssemblylineConfig) -> str:
+    if config.endpoint is None:
+        raise ConnectorError("assemblyline_not_configured")
+    return hashlib.sha256(
+        json.dumps(
+            {"origin": config.endpoint.origin, "pinned_ip": config.endpoint.pinned_ip},
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+
+
+def _analysis_check(receipt: ConnectorResult, analysis: PollingReport | None) -> Check:
+    if analysis is None or analysis.status == "NOT_RUN":
+        return Check(status=receipt.status, reason=receipt.reason)
+    observations = [
+        f"Execution: {analysis.execution_mode}; readback: {analysis.status}",
+        f"Completion checks: {analysis.polls}; bounded GET exchanges: {len(analysis.requests)}",
+        "External analysis is untrusted and does not authenticate the sender.",
+    ]
+    if analysis.analysis is not None:
+        observations.extend(
+            [
+                f"Raw external max_score: {analysis.analysis.raw_max_score}",
+                "This score is neither a phishing probability nor a locally calibrated verdict.",
+                f"Service errors: {analysis.analysis.error_count}; "
+                f"partial results: {analysis.analysis.partial_result_count}",
+            ]
+        )
+    return Check(
+        status="OBSERVED" if analysis.status == "COMPLETED" else "ERROR",
+        reason=f"Assemblyline readback: {analysis.reason}; receipt remains separate.",
+        observations=observations,
+    )
+
+
+def _run_status(
+    assemblyline: ConnectorResult,
+    sublime: ConnectorResult,
+    model: ModelReview,
+    analysis: PollingReport | None,
+) -> Literal["COMPLETED", "PARTIAL"]:
+    if "ERROR" in (assemblyline.status, sublime.status, model.status):
+        return "PARTIAL"
+    if (
+        sublime.reason == "cancelled_before_dispatch"
+        or model.reason == "Skipped after cancellation."
+    ):
+        return "PARTIAL"
+    if analysis is not None and analysis.status not in {"COMPLETED", "NOT_RUN"}:
+        return "PARTIAL"
+    return "COMPLETED"
+
+
+def _persist_analysis(case: Path, analysis: PollingReport) -> None:
+    contents = (analysis.model_dump_json(indent=2) + "\n").encode()
+    # Each explicit readback retains its provenance; latest is a convenient atomic snapshot.
+    _save(case / f"assemblyline-readback-{uuid4().hex}.json", contents)
+    _save(case / "assemblyline-analysis.json", contents, replace=True)
+
+
+async def resume_assemblyline_case(
+    settings: ConnectorSettings,
+    credentials: ExplicitCredentials,
+    *,
+    case: Path,
+    allow_egress: bool = False,
+    inner: httpx.MockTransport | None = None,
+    cancel: asyncio.Event | None = None,
+) -> PollingReport:
+    """Read only a saved submission; this path cannot submit or resubmit anything."""
+    if inner is not None and not isinstance(inner, httpx.MockTransport):
+        raise ConnectorError("mock_transport_required")
+    if inner is None and not allow_egress:
+        raise ConnectorError("egress_not_authorized")
+    config = settings.assemblyline
+    if not config.enabled or not config.polling.enabled or config.endpoint is None:
+        raise ConnectorError("assemblyline_polling_not_enabled")
+    if credentials.assemblyline_key is None:
+        raise ConnectorError("explicit_credentials_required")
+    if case.is_symlink() or not case.is_dir():
+        raise ConnectorError("case_rejected")
+    try:
+        saved = SavedAssemblylineSubmission.model_validate_json(
+            read_eml(case / "assemblyline-submission.json", Limits(max_raw_bytes=64 * 1024))
+        )
+        original = read_eml(case / "original.eml", settings.graph.limits)
+        report = Report.model_validate_json(
+            read_eml(case / "report.json", Limits(max_raw_bytes=8 * 1024 * 1024))
+        )
+        run = (
+            ConnectorRun.model_validate_json(
+                read_eml(case / "connectors.json", Limits(max_raw_bytes=1024 * 1024))
+            )
+            if (case / "connectors.json").exists()
+            else None
+        )
+    except (ValueError, RecursionError):
+        raise ConnectorError("saved_case_rejected") from None
+    receipt = saved.receipt
+    expected_mode = "MOCK" if inner is not None else "CONFIGURED"
+    if (
+        saved.execution_mode != expected_mode
+        or receipt.execution_mode != ("MOCK" if inner is not None else "LIVE")
+        or saved.endpoint_policy_sha256 != _endpoint_identity(config)
+        or receipt.service != "assemblyline"
+        or receipt.status != "OBSERVED"
+        or receipt.external_id is None
+        or receipt.source_origin != config.endpoint.origin
+        or receipt.input_sha256 != hashlib.sha256(original).hexdigest()
+        or report.provenance.sha256 != receipt.input_sha256
+        or (run is not None and run.assemblyline != receipt)
+    ):
+        raise ConnectorError("saved_case_identity_mismatch")
+    analysis = await poll_submission(
+        config.endpoint,
+        config.username or "",
+        receipt.external_id,
+        receipt.input_sha256,
+        credentials.assemblyline_key,
+        config.polling,
+        inner=inner,
+        cancel=cancel,
+    )
+    _persist_analysis(case, analysis)
+    report.reputation.assemblyline = _analysis_check(receipt, analysis)
+    if run is not None:
+        run.assemblyline_analysis = analysis
+        run.status = _run_status(receipt, run.sublime, run.model, analysis)
+        _save(
+            case / "connectors.json", (run.model_dump_json(indent=2) + "\n").encode(), replace=True
+        )
+    _save(case / "report.json", (report.model_dump_json(indent=2) + "\n").encode(), replace=True)
+    _save(case / "report.html", render_html(report).encode(), replace=True)
+    return analysis
+
+
 async def ingest_graph_case(
     settings: ConnectorSettings,
     credentials: ExplicitCredentials,
@@ -124,6 +277,7 @@ async def ingest_graph_case(
     output: Path,
     allow_egress: bool = False,
     inner: httpx.MockTransport | None = None,
+    cancel: asyncio.Event | None = None,
 ) -> ConnectorRun:
     """Fetch one selected report, save both artifacts, and run explicit stages once.
 
@@ -134,6 +288,8 @@ async def ingest_graph_case(
         raise ConnectorError("mock_transport_required")
     if inner is None and not allow_egress:
         raise ConnectorError("egress_not_authorized")
+    if cancel is not None and cancel.is_set():
+        raise ConnectorError("cancelled")
     if output.exists() or output.is_symlink():
         raise ConnectorError("output_already_exists")
     if not output.parent.is_dir():
@@ -183,22 +339,64 @@ async def ingest_graph_case(
     write_case(output, bundle.original, report)
     _save(output / "wrapper.eml", bundle.wrapper)
     _save(output / "graph-provenance.json", (source.model_dump_json(indent=2) + "\n").encode())
+    if cancel is not None and cancel.is_set():
+        raise ConnectorError("cancelled")
     claims = SubmissionClaims(output / "submissions")
     assemblyline = await AssemblylineAdapter(settings.assemblyline, inner=inner).analyze(
         bundle.original, credential=credentials.assemblyline_key or SecretStr(""), claims=claims
     )
-    sublime = await SublimeAdapter(settings.sublime, inner=inner).analyze(
-        bundle.original, credential=credentials.sublime_key or SecretStr(""), claims=claims
-    )
-    model = await configured_review(
-        settings.model,
-        subject=report.message.subject,
-        body_text="\n".join(segment.text for segment in report.message.text_segments),
-        findings=report.content.findings,
-        credential=credentials.model_key,
-        inner=inner,
-    )
-    report.reputation.assemblyline = Check(status=assemblyline.status, reason=assemblyline.reason)
+    analysis: PollingReport | None = None
+    if assemblyline.status == "OBSERVED" and assemblyline.external_id is not None:
+        saved = SavedAssemblylineSubmission(
+            execution_mode=mode,
+            endpoint_policy_sha256=_endpoint_identity(settings.assemblyline),
+            receipt=assemblyline,
+        )
+        # A durable SID must exist before any polling await or cancellation can occur.
+        _save(
+            output / "assemblyline-submission.json",
+            (saved.model_dump_json(indent=2) + "\n").encode(),
+        )
+        report.reputation.assemblyline = _analysis_check(assemblyline, None)
+        _save(
+            output / "report.json", (report.model_dump_json(indent=2) + "\n").encode(), replace=True
+        )
+        _save(output / "report.html", render_html(report).encode(), replace=True)
+        analysis = (
+            await resume_assemblyline_case(
+                settings,
+                credentials,
+                case=output,
+                allow_egress=allow_egress,
+                inner=inner,
+                cancel=cancel,
+            )
+            if settings.assemblyline.polling.enabled
+            else None
+        )
+    if (analysis is not None and analysis.status == "CANCELLED") or (
+        cancel is not None and cancel.is_set()
+    ):
+        sublime = ConnectorResult(
+            status="NOT_RUN", service="sublime", reason="cancelled_before_dispatch"
+        )
+        model = ModelReview(status="NOT_RUN", reason="Skipped after cancellation.")
+    else:
+        sublime = await SublimeAdapter(settings.sublime, inner=inner).analyze(
+            bundle.original, credential=credentials.sublime_key or SecretStr(""), claims=claims
+        )
+        if cancel is not None and cancel.is_set():
+            model = ModelReview(status="NOT_RUN", reason="Skipped after cancellation.")
+        else:
+            model = await configured_review(
+                settings.model,
+                subject=report.message.subject,
+                body_text="\n".join(segment.text for segment in report.message.text_segments),
+                findings=report.content.findings,
+                credential=credentials.model_key,
+                inner=inner,
+            )
+    report.reputation.assemblyline = _analysis_check(assemblyline, analysis)
     report.reputation.sublime = Check(status=sublime.status, reason=sublime.reason)
     report.model_stages["pydantic_ai"] = Check(
         status=model.status,
@@ -208,13 +406,12 @@ async def ingest_graph_case(
     )
     run = ConnectorRun(
         execution_mode=mode,
-        status="PARTIAL"
-        if "ERROR" in (assemblyline.status, sublime.status, model.status)
-        else "COMPLETED",
+        status=_run_status(assemblyline, sublime, model, analysis),
         graph=source,
         assemblyline=assemblyline,
         sublime=sublime,
         model=model,
+        assemblyline_analysis=analysis,
     )
     _save(output / "connectors.json", (run.model_dump_json(indent=2) + "\n").encode())
     _save(output / "report.json", (report.model_dump_json(indent=2) + "\n").encode(), replace=True)

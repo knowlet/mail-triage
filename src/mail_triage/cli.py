@@ -53,6 +53,11 @@ def main(argv: list[str] | None = None) -> int:
     triage.add_argument("--out", type=Path, required=True, help="New private case directory")
     demo = subcommands.add_parser("connect-demo", help="Local mocks of all connector contracts")
     demo.add_argument("--out", type=Path, required=True, help="New private case directory")
+    demo.add_argument(
+        "--assemblyline-poll",
+        action="store_true",
+        help="Also demonstrate bounded mock result polling",
+    )
     graph = subcommands.add_parser("graph-ingest", help="Opt-in read-only selected Graph report")
     graph.add_argument("--config", type=Path, required=True, help="Non-secret JSON configuration")
     graph.add_argument("--message-id", required=True, help="Explicit reporting wrapper ID")
@@ -60,6 +65,18 @@ def main(argv: list[str] | None = None) -> int:
     graph.add_argument("--out", type=Path, required=True, help="New private case directory")
     graph.add_argument("--allow-egress", action="store_true", required=True)
     graph.add_argument("--secrets-stdin", action="store_true", required=True)
+    readback = subcommands.add_parser(
+        "assemblyline-readback",
+        help="GET-only results for an existing saved Assemblyline submission",
+    )
+    readback.add_argument(
+        "--config", type=Path, required=True, help="Non-secret JSON configuration"
+    )
+    readback.add_argument(
+        "--case", type=Path, required=True, help="Existing private case directory"
+    )
+    readback.add_argument("--allow-egress", action="store_true", required=True)
+    readback.add_argument("--secrets-stdin", action="store_true", required=True)
     args = parser.parse_args(argv)
     if args.command != "triage":
         from mail_triage.connector_cli import connector_main

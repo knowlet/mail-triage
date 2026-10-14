@@ -17,6 +17,12 @@ Graph wrapper MIME GET, itemAttachment metadata GET, original MIME GET,
 Assemblyline submission POST, Sublime analysis POST and model POST. Results are
 explicitly `MOCK`, not live integration success. Credentials/messages are synthetic.
 
+Adding `--assemblyline-poll` runs a separate nine-exchange mock flow: the same six
+base exchanges plus two completion GETs separated by a real one-second interval,
+then a full-result GET. The saved submission receipt precedes polling. The bounded
+result projection and request provenance remain separate from deterministic
+content and authentication evidence; `COMPLETED` is not a safety verdict.
+
 The configured path is:
 
 ```sh
@@ -32,6 +38,21 @@ keychain or secret-file discovery. The [all-disabled configuration example](conf
 contains no endpoint or secret. No token acquisition, consent, tenant setup,
 mailbox listing or email action is implemented.
 
+With Assemblyline and its polling policy enabled, configured ingestion continues
+from one submission to bounded completion polling and result retrieval. A separate
+GET-only command can resume readback from the saved case without another POST:
+
+```sh
+.venv/bin/mail-triage assemblyline-readback --config operator-connectors.json \
+  --case reports/existing-configured-case --allow-egress --secrets-stdin
+```
+
+Only `assemblyline_key` is needed in its stdin JSON. Receipt/original hash,
+endpoint/pin and execution mode are checked before requests. Ctrl-C during
+configured polling records cancellation and exits 130; ordinary task cancellation
+propagates while preserving the receipt. Completion exits 0, recorded partial/
+failure/timeout outcomes exit 3, and rejected configuration/input exits 2.
+
 ## Source responsibilities
 
 | Module | Responsibility |
@@ -43,15 +64,17 @@ mailbox listing or email action is implemented.
 | `transport.py` | Exact origin/route/IP/TLS policy, bounds and sanitized failures |
 | `graph_ingest.py` | Three selected read-only GETs; exact separate wrapper/original MIME |
 | `service_adapters.py` | Explicit AL/Sublime POSTs, selected response validation and durable intent claims |
+| `assemblyline_results.py` | Bounded GET-only polling, result identity checks and untrusted projection/provenance |
 | `model_adapter.py` | Explicit bounded self-hosted chat-completions protocol through controlled HTTP |
 | `model_workflow.py` | Pydantic AI typed citation validation and separate DSPy held-out evaluation |
 | `connections.py` | Explicit credential/config orchestration and per-stage case evidence |
 | `cli.py`, `__main__.py` | Offline and opt-in connector commands |
 | `connector_cli.py` | Bounded nonsecret config / explicit stdin credentials and connector exit states |
-| `contract_demo.py` | Authored fixture, synthetic credentials and six mocked HTTP exchanges |
+| `contract_demo.py` | Authored fixture, synthetic credentials and six or nine mocked HTTP exchanges |
 
-Assemblyline provides a validated submission receipt only, without polling or
-analysis-result claims. Sublime response structure is validated but no score/match
+Assemblyline keeps its validated submission receipt separate from optional
+analysis readback. The projected raw score/counters do not establish phishing
+probability, sender trust or safety. Sublime response structure is validated but no score/match
 is promoted to a verdict. Model output remains a separate untrusted hypothesis.
 No sender OSINT, trusted gateway reputation or spam-rate telemetry exists.
 
@@ -61,10 +84,14 @@ Run `make check` for Ruff lint/format, strict mypy and pytest. Test totals are
 reported by the actual command output for the checked revision. The original
 [offline verification transcript](../demo/verification.txt) records the initial
 slice and is not a claim about the expanded suite's current count.
-The expanded local run passed Ruff lint/format, strict mypy over 15 source files,
-and **277 tests**. CI confirmation for the final head is a separate result and
-is not claimed by this local run.
-The actual captured output is [connectors-verification.txt](../demo/connectors-verification.txt).
+The earlier connector-phase output is preserved in
+[connectors-verification.txt](../demo/connectors-verification.txt); it does not
+describe the later Assemblyline readback suite. Current lint/format/type/test
+totals must come from the actual command output for the checked revision.
+The current local run passed Ruff lint/format checks over 34 files, strict mypy
+over 16 source files, and **347 tests**. Its captured output is
+[assemblyline-verification.txt](../demo/assemblyline-verification.txt).
+CI confirmation for the final head remains a separate, pending result.
 Credential echo, incomplete Sublime rule results and non-mock transport injection
 are rejected with regression coverage. The original 64-test offline suite remains
 passing.
@@ -79,6 +106,9 @@ wrapper/original separation, quoted opaque IDs, selected metadata types/IDs,
 byte limits, no implicit config/credentials, fixed origins/routes/pins, TLS/SNI
 intent, mapped/private-address rules, redirects/compression/timeouts, service
 reply validation, durable claim duplication and uncertain POST outcomes.
+Readback coverage includes strict completion booleans, pending-only repeat GETs,
+SID/original-hash binding, partial/error/missing-key projections, deadlines/poll
+limits, cancellation and saved-case recovery without resubmission.
 Mock transport does not establish real TLS handshakes, tenant permissions,
 service-version compatibility or production retention behavior.
 
@@ -135,6 +165,40 @@ No configured/live connection was performed. API receipts/hypotheses demonstrate
 request/response mechanics only. The source endpoint and hashes preserve provenance
 without asserting that Graph returned original SMTP wire bytes or authenticated
 the sender. External API links and message URLs are never followed.
+
+## Assemblyline readback demonstration
+
+The additional authored mock command is:
+
+```sh
+.venv/bin/mail-triage connect-demo --assemblyline-poll --out demo/assemblyline-case
+```
+
+Its [CLI output](../demo/assemblyline-cli-output.json),
+[analysis/provenance](../demo/assemblyline-case/assemblyline-analysis.json),
+[saved receipt](../demo/assemblyline-case/assemblyline-submission.json) and
+[request metadata](../demo/assemblyline-case/mock-requests.json) are separate from
+the preserved offline and earlier connector demonstrations. All nine exchanges
+are `MOCK`; the one-second interval is an actual asynchronous wait, not a live
+service operation.
+The captured completion requests are 1.033361 seconds apart. There is exactly one
+Assemblyline POST, followed by two completion GETs and one full-result GET. The
+projection is `COMPLETED` with raw external score `350` and zero recorded partial/
+error/missing-key counters; authentication and gateway spam rate remain `UNKNOWN`
+and disposition remains `REVIEW_REQUIRED`. The score is not a probability.
+
+The receipt records the SID, original hash and endpoint/pin/mode binding before
+the first completion check. A readback retains bounded status/score/counters,
+service names, request timestamps and response hashes. It preserves one
+`assemblyline-readback-<id>.json` history record per explicit run, while
+`assemblyline-analysis.json` and JSON/HTML reports are updated snapshots. Raw
+service bodies, error strings, attachments, credentials and arbitrary API links
+are not copied into those projections. Partial, timed-out, cancelled and rejected
+results cannot become successful analysis or sender authentication.
+
+No new native UI inspection is claimed: the Mac-lock blocker remains. Mock
+protocol and artifact checks are the available evidence; no real Assemblyline
+credential or service connection was used.
 
 ## Remaining limitations and next step
 

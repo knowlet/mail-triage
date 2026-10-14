@@ -1,7 +1,7 @@
 # Implemented connector contracts
 
 Normal `triage` remains offline. Executable optional adapters now exist for
-selected Microsoft Graph MIME retrieval, Assemblyline submission, Sublime
+selected Microsoft Graph MIME retrieval, Assemblyline submission/result readback, Sublime
 analysis and a self-hosted model. All default to disabled, without implicit
 endpoints or credentials. Tests and `connect-demo` use `httpx.MockTransport` only.
 No live tenant, service, model, consent or credential setup was performed.
@@ -23,6 +23,7 @@ keys are rejected. Both inputs must be well-formed objects with known fields.
 | CLI `--message-id`, `--attachment-id` | One selected wrapper and item attachment; bounded, separately URL-quoted IDs |
 | `graph.limits` | MIME/resource budgets applied independently to wrapper and original |
 | `assemblyline.username` | Explicit `X-USER` identity, separate from the secret API key |
+| `assemblyline.polling` | Separately disabled-by-default completion/result readback policy |
 | `sublime.selected_rules` | Up to 16 unique operator-authored `{name, source, severity?}` records; source up to 8,000 characters |
 | `model.model_name` | Explicit bounded model name; no provider/model lookup |
 
@@ -83,14 +84,86 @@ test in-scope and out-of-scope mailboxes: Entra consent and Exchange Application
 RBAC grants are additive. A narrow RBAC grant cannot cancel an existing broad
 permission. See [Exchange application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac).
 
-## Assemblyline submission
+## Assemblyline submission and readback
 
 [`AssemblylineAdapter`](../src/mail_triage/service_adapters.py) sends the selected
 original EML to the configured instance with `POST /api/v4/submit/`, `X-USER`,
 `X-APIKEY`, multipart `bin`, and `json` metadata containing SHA-256/correlation ID.
-A validated receipt supplies a submission ID. The adapter does **not** poll or
-retrieve analysis results, interpret a score, or establish sender reputation.
+A validated receipt supplies a submission ID. The separate readback module
+performs GET-only polling when explicitly enabled; receipt and analysis stay
+separate evidence.
 See the [official submission contract](https://cybercentrecanada.github.io/assemblyline4_docs/integration/rest/).
+
+`assemblyline.polling` has these exact fields:
+
+| Polling field | Default / constraint |
+| --- | --- |
+| `enabled` | `false`; Graph ingestion polls only when explicitly enabled |
+| `interval_seconds` | 2 seconds; accepted range 1–30 |
+| `deadline_seconds` | 60 seconds; accepted range 0.1–300 for the entire readback |
+| `max_polls` | 30 completion checks; accepted range 1–60 |
+
+[`poll_submission`](../src/mail_triage/assemblyline_results.py) allows only
+`GET /api/v4/submission/is_completed/{sid}/` and
+`GET /api/v4/submission/full/{sid}/`, with the configured `X-USER`/`X-APIKEY`.
+The first completion check is immediate. Only a validated `api_response: false`
+causes another check after the configured interval; a strict boolean `true`
+allows one full-result GET. Errors, malformed replies, redirects and network
+failures stop the run without retry. There are at most `max_polls + 1` GETs.
+The existing TLS/origin/pin/byte/time policy applies to every request; the overall
+deadline also covers waits and result retrieval. Transport buffering uses the
+endpoint's response cap (5 MiB by default); readback then rejects replies over
+1 MiB before schema projection. A smaller endpoint cap still applies first.
+
+The full response's `api_response` is the current top-level submission record,
+with `sid`, `state`, `max_score`, original `files` objects, and result/error/missing-key
+collections. It is not the older nested `submission` example in the route docstring.
+The bounded projection requires the saved SID and exactly one submitted-original
+SHA-256 match. It retains raw score/counters and bounded untrusted service names,
+not full service sections, errors, URLs or attachments. See the official
+[submission routes](https://github.com/CybercentreCanada/assemblyline-ui/blob/master/assemblyline_ui/api/v4/submission.py),
+[submission model](https://github.com/CybercentreCanada/assemblyline-base/blob/master/assemblyline/odm/models/submission.py)
+and [service result model](https://github.com/CybercentreCanada/assemblyline-base/blob/master/assemblyline/odm/models/result.py).
+
+Readback outcomes stay distinct:
+
+| Outcome | Meaning |
+| --- | --- |
+| `NOT_RUN` | Polling is disabled |
+| `COMPLETED` | Identity-bound, structurally valid completed state with no reported partial/error/missing counters |
+| `PARTIAL` | Valid result with incomplete/failed state or reported errors, missing keys or partial service results |
+| `TIMED_OUT` | Deadline, request timeout or maximum completion checks reached |
+| `CANCELLED` | Explicit local cancellation event; no further readback or later stage is dispatched |
+| `ERROR` | Rejected authentication, unavailable SID, malformed response, identity mismatch or transport policy failure |
+
+`raw_max_score` is an untrusted external integer. No scale, calibration, phishing
+probability, sender reputation or safety verdict is inferred from it. A completed
+API result does not establish that every possible analysis service ran.
+Upstream result filtering or default file-tree truncation can also limit coverage;
+the local projection does not certify complete upstream service execution.
+
+The orchestration fsyncs `assemblyline-submission.json` before the first polling
+await. This local receipt binds endpoint/pin hash, original SHA-256 and execution
+mode; it is not a signed trust attestation. To read a saved submission again:
+
+```sh
+.venv/bin/mail-triage assemblyline-readback --config operator-connectors.json \
+  --case reports/existing-configured-case --allow-egress --secrets-stdin
+```
+
+Enable Assemblyline and its polling policy in the nonsecret config. Supply only
+`assemblyline_key` in the stdin JSON; no other service credential is needed.
+The command checks the receipt, existing original/report hashes, endpoint/pin and
+mode before any GET. It cannot submit, retry a POST, list/read mailboxes, run
+Sublime or invoke a model. A mock receipt cannot become a configured live readback.
+Each explicit run preserves a private `assemblyline-readback-<id>.json` history
+artifact; `assemblyline-analysis.json` is the latest atomic snapshot, and the
+JSON/HTML report is updated separately. The submission receipt is retained.
+
+An explicit cancellation event records `CANCELLED`; configured CLI Ctrl-C uses
+that path while polling is enabled and exits 130. Normal asyncio task cancellation
+propagates after cleanup, leaving the already-saved receipt available for another
+explicit GET-only run. No DELETE/server-cancel action or resubmission is sent.
 
 Assemblyline is MIT-licensed file triage. Its services may execute content or
 make external requests; this application does not deploy/configure them. Review
@@ -138,8 +211,9 @@ The original case is preserved before service POSTs. A service/model failure can
 leave a partial case; inspect individual outcomes rather than inferring success
 from the presence of a directory. See [model behavior](models.md).
 
-The connector CLI returns exit 0 for a completed run, exit 3 for recorded partial
-stage failure, and exit 2 for rejected input/configuration or an ingestion failure.
+The connector CLI returns exit 0 for completion, exit 3 for recorded partial,
+failure or timed-out outcomes, exit 2 for rejected input/configuration or an
+ingestion failure, and exit 130 for cancellation.
 
 ## Authentication still needs trusted ingress
 
