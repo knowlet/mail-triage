@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mail-triage"
+version = "0.1.0"
+description = "Offline evidence-first defensive email triage"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = ["pydantic==2.14.1"]
+
+[project.optional-dependencies]
+models = ["pydantic-ai-slim==2.56.0", "dspy==3.4.1"]
+
+[project.scripts]
+mail-triage = "mail_triage.cli:main"
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "ruff==0.17.0", "mypy==2.4.0"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
