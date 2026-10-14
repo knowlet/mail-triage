@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Offline evidence-first defensive email triage"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
-dependencies = ["pydantic==2.14.1"]
+dependencies = ["pydantic==2.14.1", "httpx==0.28.1"]
 
 [project.optional-dependencies]
 models = ["pydantic-ai-slim==2.56.0", "dspy==3.4.1"]

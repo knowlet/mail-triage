@@ -1,122 +1,148 @@
 # Mail Triage
 
-A runnable, self-hosted defensive email triage prototype. Supply a local `.eml`;
-receive independent typed evidence, an inert HTML review report, and an exact
-copy of the original message. Every case remains `REVIEW_REQUIRED`.
-
-This first slice implements the user's authentication, reputation/integration,
-and Pydantic AI + DSPy design boundaries. It does not implement any unseen design
-response or claim production detection accuracy.
+A runnable defensive email triage prototype with an offline default and explicit,
+self-hosted connector adapters. Each case preserves original bytes, independent
+typed evidence and an inert HTML report. Every case remains `REVIEW_REQUIRED`.
+The implementation covers the user's readable three-part design; it makes no
+claim about an omitted design response or production detection accuracy.
 
 ## Run locally
 
-Requires Python 3.12 and [uv](https://docs.astral.sh/uv/). All packages and caches
-stay inside this project. The setup command installs the optional model libraries
-for framework tests; no provider or credentials are configured.
+Requires Python 3.12 and [uv](https://docs.astral.sh/uv/). Dependencies and caches
+stay inside this project. Setup installs the optional Pydantic AI/DSPy libraries;
+it does not configure a provider or connect to a service.
 
 ```sh
 cd mail-triage
 make setup
 make check
-make demo
-```
-
-Or run one case explicitly, using a new output directory with an existing parent:
-
-```sh
 mkdir -p reports
 .venv/bin/mail-triage triage fixtures/synthetic-phish.eml --out reports/my-case
 ```
 
-The CLI prints a JSON summary. A successful case contains:
+The offline command writes `original.eml`, `report.json` and `report.html`.
+Open the HTML file locally; no listener or background service is required.
+Directories use `0700`, files use `0600`, and existing output paths are refused.
+Use a new directory on each run. Keep real cases outside source control.
 
-- `original.eml`: exact original bytes, bound to the report by SHA-256.
-- `report.json`: versioned Pydantic report with provenance, limits and independent stages.
-- `report.html`: local review UI; all email markup, URLs and metadata are escaped text.
+A smaller installation can omit model dependencies:
 
-Open `reports/my-case/report.html` in a browser. No server or background service
-is required. Directories are private (`0700`), files are private (`0600`), and
-existing outputs—including symlinks—are refused. Failure exits with status 2 and
-a sanitized JSON diagnostic. Keep real cases outside source control.
+```sh
+UV_CACHE_DIR=.uv-cache uv sync --locked --index-url https://pypi.org/simple
+```
 
-For a smaller installation without optional model libraries, use
-`UV_CACHE_DIR=.uv-cache uv sync --locked --index-url https://pypi.org/simple`.
-The normal CLI uses Pydantic and the Python standard library only.
+`triage` performs no network request, model inference, DNS lookup, URL retrieval,
+mailbox read or email action. It does not import the configured connector flow.
 
-## What runs
+## Implemented stages
 
-| Stage | First-version behavior |
-| --- | --- |
-| MIME/provenance | Bounded parsing; original-byte copy and SHA-256; attachment inventory |
-| SPF, DKIM, DMARC, alignment | `UNKNOWN`; uploaded headers cannot authenticate themselves |
-| Content | Offline wording, literal domain difference, attachment-extension and HTML/URL observations |
-| OSINT, gateway reputation | `NOT_RUN`; no provider or trusted gateway configured |
-| Gateway spam rate | `UNKNOWN`; no source, numerator, denominator or time window |
-| Assemblyline, Sublime, Outlook | `NOT_RUN`; documented adapter contracts only |
-| Pydantic AI | `NOT_RUN` in CLI; optional code-injected typed review validates finding-ID citations |
-| DSPy | `NOT_RUN` in CLI; separate offline held-out fixture evaluation path |
+| Stage | Offline `triage` | Explicit connector flow |
+| --- | --- | --- |
+| MIME/provenance | Bounded parsing, original bytes/SHA-256, attachment inventory | Same bounds on Graph wrapper and original, stored separately |
+| SPF, DKIM, DMARC, alignment | `UNKNOWN` | Still `UNKNOWN`; Graph retrieval and API replies do not authenticate the sender |
+| Content | Independent deterministic wording/domain/attachment/HTML observations | Same observations; optional model hypothesis kept separate |
+| Sender OSINT/gateway reputation | `NOT_RUN` | Not implemented |
+| Gateway spam rate | `UNKNOWN` | `UNKNOWN`; no named telemetry/denominator/window |
+| Outlook reports | `NOT_RUN` | Three selected Graph GETs; no mailbox listing or token acquisition |
+| Assemblyline | `NOT_RUN` | One selected EML submission; receipt ID only, no polling/results claim |
+| Sublime | `NOT_RUN` | One raw-message analysis request with explicit operator-authored rules |
+| Pydantic AI | `NOT_RUN` | Optional single bounded self-hosted chat-completions request; validated finding citations |
+| DSPy | `NOT_RUN` | Separate offline authored held-out evaluation; no live optimization |
 
-No DNS lookups, URL fetching, attachment execution, live LLM requests, mailbox
-reads or email actions occur during normal triage. Attachment filenames never
-become output paths. Nested attached messages cannot supply the wrapper's
-identity or authentication. Prompt instructions in email and model output have
-no action capabilities. Heuristics and model hypotheses do not prove maliciousness,
-safety, impersonation or domain ownership.
+External replies and model output are untrusted observations, never safety,
+identity or impersonation proof. The application never executes/unpacks
+attachments, follows message/API links, quarantines/deletes/replies to email,
+or sends messages. Service-side analysis may have its own execution, retention
+and onward-egress behavior and needs separate review.
 
-## Actual demonstration
+## Connector demonstration: mocked HTTP only
 
-The authored 1,966-byte [fixture](fixtures/synthetic-phish.eml) contains fake
-authentication-pass headers, plain text, active HTML source and a synthetic
-attachment named `../../invoice.docm`. Its reserved `.invalid` URLs are never
-visited. The actual outputs are checked in for inspection:
+```sh
+.venv/bin/mail-triage connect-demo --out reports/mock-connectors
+```
 
-- [CLI output](demo/cli-output.json) (output directory normalized to a relative path)
-- [Typed JSON report](demo/offline-case/report.json)
-- [Inert HTML report](demo/offline-case/report.html)
-- [HTML after visual review](demo/reviewed-report.html) (same evidence; table headings improved)
-- [Preserved original](demo/offline-case/original.eml)
+This runs the executable adapters through `httpx.MockTransport`: three Graph GETs,
+one Assemblyline POST, one Sublime POST and one model POST. It uses authored
+messages, scripted replies and synthetic credentials. No live tenant, service or
+model is contacted. `MOCK` labels identify contract execution, not integration
+accuracy or live-service success.
 
-Six content observations are produced. All authentication checks remain
-`UNKNOWN` despite the spoofed pass claims; all model/live integration stages
-remain `NOT_RUN`. This demonstrates mechanics, not phishing accuracy.
+A connector case adds `wrapper.eml`, `graph-provenance.json`, `connectors.json`
+and a `submissions/` intent directory to the ordinary original/report artifacts.
+The demo also writes `mock-requests.json` with inert method/host/path/size records.
+Wrapper and original hashes/identities are separate; `original.eml` contains the
+exact Graph itemAttachment `/$value` response, not MIME reserialization.
+External POST intents persist even after uncertain outcomes, preventing automatic
+resubmission of the same artifact/service/configuration within that case. A new
+case can submit again; there is no global deduplication system.
+
+The captured [connector CLI output](demo/connectors-cli-output.json) and
+[connector case](demo/connectors-case/connectors.json) show the mocked flow.
+The original [offline JSON](demo/offline-case/report.json),
+[offline HTML](demo/offline-case/report.html),
+[preserved fixture bytes](demo/offline-case/original.eml) and
+[offline CLI output](demo/cli-output.json) remain unchanged. The authored
+1,966-byte fixture produces six content observations while all authentication
+checks remain `UNKNOWN`. These examples demonstrate mechanics, not accuracy.
+
+## Explicit configured connections
+
+Live connections have **not** been tested. The CLI path is available for a
+separately authorized operator with existing service access:
+
+```sh
+.venv/bin/mail-triage graph-ingest --config operator-connectors.json \
+  --message-id SELECTED_WRAPPER_ID --attachment-id SELECTED_ITEM_ATTACHMENT_ID \
+  --out reports/new-configured-case --allow-egress --secrets-stdin
+```
+
+The configuration is typed, nonsecret JSON. Start with the
+[all-disabled example](docs/configured-connectors.example.json). For each enabled
+stage supply an explicit HTTPS origin and exact IP pin, plus the chosen mailbox,
+model name, Assemblyline username or Sublime rule sources. IDs are explicit CLI
+arguments; there is no discovery, pagination, tenant consent or account setup.
+See [configuration and contracts](docs/integrations.md#configuration-and-credentials).
+
+Supply credentials as one JSON object on standard input, using the keys
+`graph_token`, `assemblyline_key`, `sublime_key` and `model_key` for enabled
+stages. Values become `SecretStr` objects. There is no environment, keychain or
+credential-file lookup. Do not put credentials in the config, command arguments,
+reports or repository. `--allow-egress` is required for the configured CLI path;
+ordinary `triage` never gains egress from configuration.
+
+Transport enforces exact origin/method/path, an exact IP pin, TLS verification,
+Host/SNI preservation, byte/time bounds, and no redirects, retries or ambient
+proxies. Private pins require explicit opt-in; loopback/link-local/multicast/
+unspecified destinations remain forbidden. See [security boundaries](docs/security-boundaries.md).
 
 ## Verification and limitations
 
-`make check` runs Ruff lint/format checks, strict mypy for application code and
-pytest. Network connections/DNS are denied in tests. Tests cover malformed and
-oversized input, MIME depth/part/header/decoded-text budgets, authentication-header
-spoofing, attachments/HTML, nested identity isolation, output collisions and
-provenance. Model tests use explicitly labeled Pydantic AI `FunctionModel` and
-DSPy `DummyLM` stubs; no real LLM was connected. Optional model tests skip if the
-model dependencies are not installed.
+`make check` runs Ruff lint/format, strict mypy and pytest. Tests deny real socket/
+DNS access and exercise bounded MIME handling, spoofed headers, inert HTML,
+provenance, controlled transport, invalid service replies, uncertain POSTs and
+credential separation. Pydantic AI `FunctionModel`/DSPy `DummyLM` tests are labeled
+`STUB`; connector tests and the connector demo use `MOCK`. No real LLM, Outlook,
+Assemblyline or Sublime connection is claimed. Optional model tests require the
+model dependency extra.
 
-This is a CLI prototype, with no production API, queue, case database, RBAC,
-encryption, retention policy or tenant connection. Parser limits are application
-bounds, not an OS sandbox. Malformed messages and undeclared non-ASCII text fail
-closed. Attached-message/container hashes describe parser reserialization with
-an explicit warning; exact embedded-message extraction remains future work.
-HTML safety is covered by structural tests. The synthetic report was also inspected
-in the existing Safari browser using native app controls; markup stays literal text.
+This CLI prototype has no production API, queue, case database, RBAC, encryption,
+retention system or tenant setup. Application parser limits are not an OS sandbox.
+Malformed input and undeclared non-ASCII text fail closed. For local EML nested
+message/container inventory, hashes describe parser reserialization with a warning;
+the Graph adapter separately preserves the exact MIME bytes returned by Graph.
+TLS uses HTTPX's default certifi CA bundle; no custom CA or insecure-TLS switch
+is provided.
+Fixed pins require operator maintenance. The model endpoint must implement the
+strict supported chat-completions response shape.
 
-See [security boundaries](docs/security-boundaries.md),
-[integration contracts](docs/integrations.md), [model workflow](docs/models.md)
-and [dependency provenance](docs/dependencies.md). The next smallest step is a
-tested local trusted-ingress sidecar contract bound to original-byte hashes;
-live authentication or mailbox integrations follow only with an authenticated
-collector and separately authorized, controlled egress.
+See [models](docs/models.md), [dependency provenance](docs/dependencies.md) and
+[delivery evidence](docs/implementation-report.md). The next step toward actual
+SPF/DKIM/DMARC results is a tested, authenticated trusted-ingress assertion
+contract bound to exact original hashes; mailbox retrieval alone is insufficient.
 
-## Repository state
-
-Local `main` holds the clean initialization commit. Development is on
-`feat/offline-triage`, prepared for a Draft PR against the public
-[`knowlet/mail-triage`](https://github.com/knowlet/mail-triage) repository, as
-explicitly requested by the user. Review, merge and deployment are separate steps.
-
-The [CI workflow](.github/workflows/ci.yml) runs on pull requests and pushes to
-`main`, with read-only repository permissions and a 15-minute job deadline. It
-installs the locked dependencies and runs the same `make check` used locally.
-Tests deny network/DNS access and use scripted model backends; no external email
-integration or real inference is enabled in CI. Action revisions and uv are pinned.
+The [CI workflow](.github/workflows/ci.yml) installs locked dependencies and runs
+the same checks with read-only repository permissions. No external integration or
+real inference is enabled in CI. No merge, deployment or release is included.
 
 ## License status
 

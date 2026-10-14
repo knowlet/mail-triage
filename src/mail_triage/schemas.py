@@ -55,7 +55,7 @@ class Provenance(Record):
     sha256: str
     raw_bytes: int
     source_name: str
-    source_kind: Literal["local_eml"] = "local_eml"
+    source_kind: Literal["local_eml", "graph_original"] = "local_eml"
     ingested_at: datetime
     original_artifact: str = "original.eml"
 

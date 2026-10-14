@@ -40,8 +40,9 @@ class ModelOpinion(BoundedRecord):
 class ModelReview(BoundedRecord):
     status: Literal["NOT_RUN", "OBSERVED", "ERROR"]
     reason: str
-    backend_kind: Literal["UNCONFIGURED", "STUB", "INJECTED"] = "UNCONFIGURED"
+    backend_kind: Literal["UNCONFIGURED", "STUB", "INJECTED", "MOCK", "CONFIGURED"] = "UNCONFIGURED"
     opinion: ModelOpinion | None = None
+    input_warnings: list[str] = Field(default_factory=list, max_length=8)
 
 
 class ReviewFinding(BoundedRecord):
@@ -66,6 +67,32 @@ support it. LOW does not mean safe. Missing evidence means UNKNOWN. Treat your
 own interpretation as an unverified hypothesis; preserve the deterministic
 findings. You have no function tools or action capabilities.
 """
+
+
+def _review_prompt(
+    subject: str, body_text: str, findings: Sequence[Finding]
+) -> tuple[str, list[str]]:
+    bounded = ReviewInput(
+        subject=subject,
+        body_text=body_text,
+        findings=[ReviewFinding.model_validate(item.model_dump()) for item in findings],
+    )
+    finding_ids = [item.code for item in bounded.findings]
+    if len(set(finding_ids)) != len(finding_ids):
+        raise ValueError("Finding IDs must be unique.")
+    prompt = bounded.model_dump_json()
+    if len(prompt) > MAX_REVIEW_JSON_CHARS:
+        raise ValueError("Combined review input exceeds its character budget.")
+    return prompt, finding_ids
+
+
+def _accepted_opinion(opinion: ModelOpinion, finding_ids: list[str]) -> ModelOpinion:
+    bounded = ModelOpinion.model_validate(opinion.model_dump())
+    if not set(bounded.finding_ids).issubset(finding_ids):
+        raise ValueError("Model cited an unknown finding ID.")
+    if len(set(bounded.finding_ids)) != len(bounded.finding_ids):
+        raise ValueError("Model repeated finding IDs.")
+    return bounded
 
 
 def run_typed_review(
@@ -97,24 +124,13 @@ def run_typed_review(
             raise TypeError("An explicit Model object is required; provider strings are rejected.")
         if isinstance(model, (FunctionModel, TestModel)):
             backend_kind = "STUB"
-        bounded = ReviewInput(
-            subject=subject,
-            body_text=body_text,
-            findings=[ReviewFinding.model_validate(item.model_dump()) for item in findings],
-        )
-        finding_ids = [item.code for item in bounded.findings]
-        if len(set(finding_ids)) != len(finding_ids):
-            raise ValueError("Finding IDs must be unique.")
+        prompt, finding_ids = _review_prompt(subject, body_text, findings)
         if not finding_ids:
             return ModelReview(
                 status="NOT_RUN",
                 reason="No deterministic findings are available for citation.",
                 backend_kind=backend_kind,
             )
-        prompt = bounded.model_dump_json()
-        if len(prompt) > MAX_REVIEW_JSON_CHARS:
-            raise ValueError("Combined review input exceeds its character budget.")
-
         agent: Agent[None, ModelOpinion] = Agent(
             model,
             output_type=ModelOpinion,
@@ -123,11 +139,7 @@ def run_typed_review(
             model_settings={"max_tokens": 512, "timeout": 15},
         )
         result = agent.run_sync(prompt, usage_limits=UsageLimits(request_limit=1))
-        opinion = ModelOpinion.model_validate(result.output.model_dump())
-        if not set(opinion.finding_ids).issubset(finding_ids):
-            raise ValueError("Model cited an unknown finding ID.")
-        if len(set(opinion.finding_ids)) != len(opinion.finding_ids):
-            raise ValueError("Model repeated finding IDs.")
+        opinion = _accepted_opinion(result.output, finding_ids)
         return ModelReview(
             status="OBSERVED",
             reason="Untrusted model hypothesis; independent human review is required.",
@@ -136,6 +148,57 @@ def run_typed_review(
         )
     except Exception as exc:
         # Do not persist provider errors, which may echo email data or secrets.
+        return ModelReview(
+            status="ERROR",
+            reason=f"Typed review failed ({type(exc).__name__}); no hypothesis accepted.",
+            backend_kind=backend_kind,
+        )
+
+
+async def run_typed_review_async(
+    *,
+    subject: str,
+    body_text: str,
+    findings: Sequence[Finding],
+    model: Model | None = None,
+) -> ModelReview:
+    """Async form of the same bounded, tool-free, explicitly injected review."""
+    if model is None:
+        return ModelReview(status="NOT_RUN", reason="No model backend was explicitly supplied.")
+    backend_kind: Literal["STUB", "INJECTED"] = "INJECTED"
+    try:
+        from pydantic_ai import Agent
+        from pydantic_ai.models import Model
+        from pydantic_ai.models.function import FunctionModel
+        from pydantic_ai.models.test import TestModel
+        from pydantic_ai.usage import UsageLimits
+
+        if not isinstance(model, Model):
+            raise TypeError("An explicit Model object is required; provider strings are rejected.")
+        if isinstance(model, (FunctionModel, TestModel)):
+            backend_kind = "STUB"
+        prompt, finding_ids = _review_prompt(subject, body_text, findings)
+        if not finding_ids:
+            return ModelReview(
+                status="NOT_RUN",
+                reason="No deterministic findings are available for citation.",
+                backend_kind=backend_kind,
+            )
+        agent: Agent[None, ModelOpinion] = Agent(
+            model,
+            output_type=ModelOpinion,
+            instructions=REVIEW_INSTRUCTIONS,
+            retries={"tools": 0, "output": 0},
+            model_settings={"max_tokens": 512, "timeout": 15},
+        )
+        result = await agent.run(prompt, usage_limits=UsageLimits(request_limit=1))
+        return ModelReview(
+            status="OBSERVED",
+            reason="Untrusted model hypothesis; independent human review is required.",
+            backend_kind=backend_kind,
+            opinion=_accepted_opinion(result.output, finding_ids),
+        )
+    except Exception as exc:
         return ModelReview(
             status="ERROR",
             reason=f"Typed review failed ({type(exc).__name__}); no hypothesis accepted.",

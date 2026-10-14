@@ -77,6 +77,11 @@ def render_html(report: Report) -> str:
     models = "".join(_check(name, stage) for name, stage in report.model_stages.items())
     warnings = "".join(f"<li>{_escape(value)}</li>" for value in report.warnings)
     raw_json = _escape(json.dumps(report.model_dump(mode="json"), indent=2, ensure_ascii=True))
+    report_kind = (
+        "GRAPH ORIGINAL · EXPLICIT CONNECTOR REPORT"
+        if report.provenance.source_kind == "graph_original"
+        else "OFFLINE CASE REPORT"
+    )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -98,7 +103,7 @@ td,th {{padding:9px; text-align:left; border-bottom:1px solid #dde5ec; overflow-
 th {{white-space:nowrap; overflow-wrap:normal}}
 .table {{overflow:auto}} code {{overflow-wrap:anywhere}} li {{margin:7px 0}}
 </style></head><body>
-<header><p class="muted">MAIL TRIAGE · OFFLINE CASE REPORT</p>
+<header><p class="muted">MAIL TRIAGE · {report_kind}</p>
 <h1>{_escape(report.message.subject or "(no subject)")}</h1>
 <p><strong class="badge">REVIEW REQUIRED</strong></p>
 <p>Heuristic observations support human review. They do not prove phishing, safety, or identity.</p>
@@ -141,11 +146,19 @@ def write_case(output: Path, raw: bytes, report: Report) -> None:
             with path.open("xb") as stream:
                 os.chmod(path, 0o600)
                 stream.write(contents)
+                stream.flush()
+                os.fsync(stream.fileno())
         # mkdir provides an atomic no-clobber reservation even for an existing empty directory.
         output.mkdir(mode=0o700)
         try:
             for path in temporary.iterdir():
                 path.rename(output / path.name)
+            for directory in (output, output.parent):
+                descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
         except BaseException:
             shutil.rmtree(output)
             raise

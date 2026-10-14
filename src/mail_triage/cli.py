@@ -1,4 +1,4 @@
-"""Offline .eml ingestion; no credentials, connections, or email actions."""
+"""Offline .eml triage and explicitly selected, opt-in connector commands."""
 
 import argparse
 import hashlib
@@ -51,7 +51,20 @@ def main(argv: list[str] | None = None) -> int:
     triage = subcommands.add_parser("triage", help="Review one local regular .eml file offline")
     triage.add_argument("input", type=Path)
     triage.add_argument("--out", type=Path, required=True, help="New private case directory")
+    demo = subcommands.add_parser("connect-demo", help="Local mocks of all connector contracts")
+    demo.add_argument("--out", type=Path, required=True, help="New private case directory")
+    graph = subcommands.add_parser("graph-ingest", help="Opt-in read-only selected Graph report")
+    graph.add_argument("--config", type=Path, required=True, help="Non-secret JSON configuration")
+    graph.add_argument("--message-id", required=True, help="Explicit reporting wrapper ID")
+    graph.add_argument("--attachment-id", required=True, help="Explicit original itemAttachment ID")
+    graph.add_argument("--out", type=Path, required=True, help="New private case directory")
+    graph.add_argument("--allow-egress", action="store_true", required=True)
+    graph.add_argument("--secrets-stdin", action="store_true", required=True)
     args = parser.parse_args(argv)
+    if args.command != "triage":
+        from mail_triage.connector_cli import connector_main
+
+        return connector_main(args)
     limits = Limits()
     try:
         raw = read_eml(args.input, limits)

@@ -1,109 +1,167 @@
-# Integration contracts
+# Implemented connector contracts
 
-This version ingests a local `.eml` only. Outlook, sender OSINT, gateway
-reputation, Assemblyline and Sublime adapters are **not implemented or connected**;
-their report stages remain `NOT_RUN` or `UNKNOWN`. The contracts below describe
-future work, not working configuration switches. No credentials, tenant consent,
-mailbox access or external submissions were used to build this version.
+Normal `triage` remains offline. Executable optional adapters now exist for
+selected Microsoft Graph MIME retrieval, Assemblyline submission, Sublime
+analysis and a self-hosted model. All default to disabled, without implicit
+endpoints or credentials. Tests and `connect-demo` use `httpx.MockTransport` only.
+No live tenant, service, model, consent or credential setup was performed.
+Sender OSINT, gateway reputation and gateway spam-rate telemetry are not implemented.
 
-## Trusted ingress: the next smallest step
+## Configuration and credentials
 
-Implement and test a versioned sidecar contract with authored fixtures before
-adding a live service. Bind the sidecar to the exact original message SHA-256,
-authenticated collector identity, receive time, ingress/policy version and
-replay-resistant event ID. Reject mismatched bytes, unknown issuers, expired or
-replayed assertions, and missing provenance. Do not accept a user-supplied
-`trusted: true` flag or treat Graph retrieval alone as authentication evidence.
+`ConnectorSettings` in [`connections.py`](../src/mail_triage/connections.py)
+accepts only `graph`, `assemblyline`, `sublime` and `model`. Unknown settings are
+rejected. The [example JSON](configured-connectors.example.json) is valid with
+all stages disabled and no destinations. Enabling Graph requires a mailbox and
+endpoint; enabling each other stage requires its endpoint and specific settings.
+The CLI caps config input at 64 KiB and secret JSON at 16 KiB; duplicate JSON
+keys are rejected. Both inputs must be well-formed objects with known fields.
 
-For authentication assertions, the collector must be inside a documented trust
-boundary and attest that forged internal assertions were stripped at ingress.
-An allowlisted `authserv-id` in uploaded MIME is insufficient: anyone can write
-that header. Preserve the uploaded bytes without alteration; record sanitation
-and verified assertions separately. See [RFC 8601 trust boundaries and removal
-of existing fields](https://www.rfc-editor.org/info/rfc8601/).
+| Nonsecret setting | Meaning |
+| --- | --- |
+| `graph.mailbox` | One explicit mailbox identifier/UPN; maximum 512 characters |
+| CLI `--message-id`, `--attachment-id` | One selected wrapper and item attachment; bounded, separately URL-quoted IDs |
+| `graph.limits` | MIME/resource budgets applied independently to wrapper and original |
+| `assemblyline.username` | Explicit `X-USER` identity, separate from the secret API key |
+| `sublime.selected_rules` | Up to 16 unique operator-authored `{name, source, severity?}` records; source up to 8,000 characters |
+| `model.model_name` | Explicit bounded model name; no provider/model lookup |
 
-SPF evaluation needs the actual SMTP peer IP and envelope identity, not a guessed
-`Received` hop or visible `From`. See [RFC 7208 section 4.1](https://www.rfc-editor.org/rfc/rfc7208.html#section-4.1).
-DKIM needs cryptographic verification with a controlled key-resolution policy.
-DMARC needs a verified aligned SPF pass **or** a verified aligned DKIM pass,
-with policy evaluation. Strict and relaxed alignment must remain distinct;
-relaxed alignment needs organizational-domain/public-suffix handling, never
-"last two labels." Missing evidence stays `UNKNOWN`. See [RFC 7489 section
-3.1](https://www.rfc-editor.org/rfc/rfc7489.html#section-3.1).
+Every non-null `endpoint` uses this exact nonsecret policy schema:
 
-## Outlook user reports
+| Endpoint field | Default / constraint |
+| --- | --- |
+| `origin` | Required bare HTTPS origin, optional explicit port; no path, credentials, query or fragment |
+| `pinned_ip` | Required exact IPv4/IPv6 address; no DNS lookup |
+| `allow_private_ip` | `false`; explicit opt-in for a selected non-global pin |
+| `connect_timeout` | 5 seconds; accepted range 0.1–30 |
+| `read_timeout` | 5 seconds; accepted range 0.1–30; also bounds writes |
+| `total_timeout` | 15 seconds; accepted range 0.1–60 |
+| `max_request_bytes` | 8 MiB; accepted range 1 byte–16 MiB |
+| `max_response_bytes` | 5 MiB; accepted range 1 byte–8 MiB |
 
-The supported design is Outlook Report → an internal Exchange Online reporting
-mailbox → a separately authorized ingestion adapter. Microsoft's report settings
-support **My reporting mailbox only**; they cannot route directly to an external
-self-hosted address. No native self-hosted webhook is assumed. See [Microsoft's
-user reported settings](https://learn.microsoft.com/en-us/defender-office-365/submissions-user-reported-messages-custom-mailbox).
+Graph additionally bounds the entire three-request fetch by `total_timeout`.
+Services accept at most 5 MiB of input and interpret at most 1 MiB of JSON reply.
+Graph metadata is capped at 64 KiB. There is no private-network blanket allowlist:
+only the configured exact pin is contacted; loopback, link-local, multicast and
+unspecified addresses are always refused. TLS verification remains enabled.
 
-The future adapter retrieves MIME with
-`GET /users/{mailbox}/messages/{id}/$value` using read-only `Mail.Read` access.
-Preserve the report wrapper and its provenance. Extract an attached original
-message as a separate bounded artifact with a parent/child relationship and its
-own exact-byte hash; do not combine wrapper headers with original-message
-authentication. Extraction of exact original attached-message bytes is **not
-implemented** here. See [Graph message MIME retrieval](https://learn.microsoft.com/en-us/graph/api/message-get?view=graph-rest-1.0).
+The configured CLI requires both `--allow-egress` and `--secrets-stdin`.
+Credentials arrive as JSON on standard input and are validated as
+`ExplicitCredentials`: `graph_token`, `assemblyline_key`, `sublime_key`,
+`model_key`. Enabled stages require their explicitly supplied secret; values use
+Pydantic `SecretStr`. There is no environment, keychain, secret-file, token
+acquisition or account-discovery path. Nonsecret config is read only from the
+selected config path. The exact configured origins/pins, mailbox and IDs need
+operator review before use. Do not place secrets in arguments or config files.
 
-Before production authorization, test both in-scope and out-of-scope mailboxes.
-Entra permission consents and Exchange Application RBAC grants are additive;
-a scoped RBAC assignment does not neutralize an existing broad grant. Review
-the effective union of permissions. See [Exchange application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac).
-Do not add write, send, quarantine or deletion permissions to this adapter.
+## Outlook user reports and exact original MIME
 
-## Assemblyline file triage
+Outlook Report targets an internal Exchange Online reporting mailbox, then this
+read-only adapter retrieves explicit resources. It is not a native self-hosted
+webhook. Microsoft supports **My reporting mailbox only**, rather than direct
+routing to an external self-hosted address. See [user-reported message settings](https://learn.microsoft.com/en-us/defender-office-365/submissions-user-reported-messages-custom-mailbox).
 
-[Assemblyline](https://github.com/CybercentreCanada/assemblyline) is an MIT-licensed
-self-hosted file-triage and malware-analysis framework. It supplies file evidence,
-not sender reputation or gateway spam rates. Its stage appears alongside other
-external evidence in this report for display convenience.
+[`GraphAdapter`](../src/mail_triage/graph_ingest.py) makes exactly:
 
-A future adapter submits only an explicitly selected artifact to the configured
-instance: `POST /api/v4/submit/`, `X-USER` and `X-APIKEY` authentication, multipart
-`bin` bytes and optional `json` submission parameters/metadata. Include the local
-artifact hash and case correlation ID; retain submission ID, instance identity,
-service versions, timestamps and response hash separately. Validate the instance's
-API contract before use. See [Assemblyline REST submission](https://cybercentrecanada.github.io/assemblyline4_docs/integration/rest/).
+1. `GET /v1.0/users/{mailbox}/messages/{wrapper-id}/$value` for wrapper MIME.
+2. `GET /v1.0/users/{mailbox}/messages/{wrapper-id}/attachments/{attachment-id}`
+   to require `#microsoft.graph.itemAttachment` and the selected attachment ID.
+3. `GET` on that attachment's `/$value` for original MIME.
 
-Keep this adapter disabled until service-level egress and data retention are
-reviewed: analysis services may contact external systems. A remote score must not
-overwrite independent authentication/content evidence or trigger disposition.
+All path segments are individually quoted. Both messages pass bounded parsing;
+wrapper headers/body never become original-message evidence. Exact response bytes
+are saved as `wrapper.eml` and `original.eml` with separate hashes/IDs in
+`graph-provenance.json`. “Exact” refers to bytes returned by Graph, not an
+assertion that Graph retained original SMTP wire bytes. No parser serialization
+is used to obtain the original artifact. See [Graph message MIME](https://learn.microsoft.com/en-us/graph/api/message-get?view=graph-rest-1.0)
+and [itemAttachment MIME `/$value`](https://learn.microsoft.com/en-us/graph/api/attachment-get?view=graph-rest-1.0).
+
+The adapter uses caller-supplied bearer credentials for read-only `Mail.Read`
+operations. It performs no mailbox listing, pagination, token acquisition, tenant
+consent, configuration writes or email actions. Before production authorization,
+test in-scope and out-of-scope mailboxes: Entra consent and Exchange Application
+RBAC grants are additive. A narrow RBAC grant cannot cancel an existing broad
+permission. See [Exchange application RBAC](https://learn.microsoft.com/en-us/exchange/permissions-exo/application-rbac).
+
+## Assemblyline submission
+
+[`AssemblylineAdapter`](../src/mail_triage/service_adapters.py) sends the selected
+original EML to the configured instance with `POST /api/v4/submit/`, `X-USER`,
+`X-APIKEY`, multipart `bin`, and `json` metadata containing SHA-256/correlation ID.
+A validated receipt supplies a submission ID. The adapter does **not** poll or
+retrieve analysis results, interpret a score, or establish sender reputation.
+See the [official submission contract](https://cybercentrecanada.github.io/assemblyline4_docs/integration/rest/).
+
+Assemblyline is MIT-licensed file triage. Its services may execute content or
+make external requests; this application does not deploy/configure them. Review
+the selected instance's egress, retention and service policies separately.
 
 ## Sublime analysis
 
-Keep an optional API adapter boundary. The proposed call is
-`POST /v0/messages/analyze` with base64 `raw_message` and explicitly selected
-rules, following the configured instance's schema. Require an explicit endpoint;
-never silently fall back to a public analyzer. Record endpoint identity, rule
-identifiers/versions, evaluation time and raw-response hash. See [Sublime raw
-message analysis](https://docs.sublime.security/reference/analyzemessage).
+[`SublimeAdapter`](../src/mail_triage/service_adapters.py) sends one
+`POST /v0/messages/analyze` containing base64 `raw_message`, explicit rule
+sources and empty `queries`. There is no automatic rule feed or URL retrieval.
+The adapter requires a configured instance and rejects the public
+`analyzer.sublime.security` / `platform.sublime.security` host families. It validates
+bounded rule/query response structure, then records a response hash and
+`OBSERVED`; it does not promote matches to a malicious/safe/identity verdict.
+It requires exactly one result for every selected rule, with the selected name
+and source echoed exactly, `success: true`, and a boolean `matched`. Missing,
+duplicate, unexpected or failed rule results are rejected rather than treated
+as a clean analysis. Requests contain no queries; nonempty query results are rejected.
+See [Sublime message analysis](https://docs.sublime.security/reference/analyzemessage).
 
-Do not bundle Sublime Docker images as this project's engine. The deployment
-repository's license does not establish a license for the platform images. Its
-Docker setup is limited to 100 active mailboxes with best-effort support, and
-using those images inside another implementation is unsupported. See [Sublime
-Platform caveats](https://github.com/sublime-security/sublime-platform).
-Review telemetry defaults and downstream data sharing before any future
-deployment. No Sublime deployment or telemetry configuration was performed.
+No Sublime images are bundled or deployed. Its deployment repository license does
+not license the platform images for embedding: the Docker platform is limited
+to 100 active mailboxes with best-effort support, and embedding its images is
+unsupported. Review telemetry and downstream data handling separately. See
+[Sublime Platform caveats](https://github.com/sublime-security/sublime-platform).
 
-## Sender and gateway intelligence
+## Submission intent and uncertain outcomes
 
-A future result needs a named source, exact queried indicator, collection and
-observation timestamps, source/version, raw-response hash and limitations. Keep
-sender/domain/IP observations separate; a claimed `Received` IP is untrusted.
-Do not infer a sending gateway or prove impersonation from model output alone.
+Before either service POST, a durable private `submissions/` claim binds service,
+endpoint/pin hash, original SHA-256 and selected-rules hash. Exclusive creation
+blocks duplicate submissions within that case, including after timeouts or
+network failures. Claims are not automatically removed, retried or reset.
+A timeout may mean the server accepted a submission; it remains an uncertain
+outcome, never success or a reason to silently retry. A new case can submit the
+same message again. This is local per-case intent protection, not a distributed
+idempotency guarantee.
+Intent files and their containing directories are fsynced. Connector case-file
+writes are also fsynced with their directories; report replacements use a private
+temporary file and atomic rename. These are durable individual writes, not a
+transaction spanning every case artifact.
 
-Report a spam rate only when authorized telemetry supplies a numerator,
-denominator, time window, population and classification definition. Missing
-telemetry stays `UNKNOWN`; no percentage is estimated from an individual email.
+`connectors.json` retains selected source/time/hash/receipt fields and sanitized
+failure reasons, not raw service responses, credentials or arbitrary API links.
+The original case is preserved before service POSTs. A service/model failure can
+leave a partial case; inspect individual outcomes rather than inferring success
+from the presence of a directory. See [model behavior](models.md).
 
-All future network adapters must satisfy the [egress boundary](security-boundaries.md#future-egress).
-Pydantic AI and DSPy integration details are in [models.md](models.md); those
-frameworks do not supply authentication, gateway reputation or mailbox ingestion.
+The connector CLI returns exit 0 for a completed run, exit 3 for recorded partial
+stage failure, and exit 2 for rejected input/configuration or an ingestion failure.
 
-The user's [example analyzer reference](https://github.com/aliex23k65/Phishing_Email_Analyzer/tree/main)
-is a research source only. No code, repository prompts, skills or instructions
-from it were copied into this implementation, and no unseen design response is
-claimed as implemented.
+## Authentication still needs trusted ingress
+
+Graph retrieval does not authenticate the original sender. Uploaded
+`Authentication-Results`, an allowlisted `authserv-id`, `Received`, envelope-like
+headers and model claims remain unverified. SPF needs the actual SMTP peer and
+envelope identity; DKIM needs controlled cryptographic/key verification; DMARC
+needs verified aligned SPF **or** DKIM. Relaxed alignment needs organizational-domain
+and public-suffix handling, not the last two labels. Missing evidence remains
+`UNKNOWN`. See [RFC 8601](https://www.rfc-editor.org/info/rfc8601/),
+[RFC 7208](https://www.rfc-editor.org/rfc/rfc7208.html#section-4.1) and
+[RFC 7489](https://www.rfc-editor.org/rfc/rfc7489.html#section-3.1).
+
+The next smallest authentication step is a versioned trusted-ingress assertion
+contract bound to exact original SHA-256, authenticated collector identity,
+receive time, policy version and replay-resistant event ID. Reject hash mismatch,
+unknown issuers, expiry/replay and missing provenance. Require attestation that
+forged internal assertions were stripped at the documented ingress boundary;
+a user-writable `trusted: true` flag is insufficient.
+
+Spam rates remain unavailable without a named telemetry source, numerator,
+denominator, time window, population and classification definition. A model or
+single message cannot supply gateway reputation or prove impersonation.
+The [example analyzer repository](https://github.com/aliex23k65/Phishing_Email_Analyzer/tree/main)
+was research material only; no prompts/skills/code or unseen requirements were copied.

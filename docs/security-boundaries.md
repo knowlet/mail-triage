@@ -1,98 +1,121 @@
 # Security boundaries
 
-This is a local analyst-assistance prototype. Every report requires review;
-neither a lack of findings nor a model opinion establishes safety. There is no
-automatic quarantine, deletion, reply, forwarding or message sending.
+This is an analyst-assistance CLI prototype. Every report requires review; a
+lack of findings, external receipt or model opinion does not establish safety.
+There is no automatic quarantine, deletion, reply, forwarding or message sending.
 
-## Current offline boundary
+## Offline ingestion
 
-Only an operator-selected local `.eml` is ingested. The final input path must be
-a regular file and cannot be a symlink or FIFO. Original bytes are preserved in
-`original.eml`; provenance records SHA-256, size, source name and ingestion time.
-Duplicate headers are retained as observations. All message headers and body
-data, filenames, URLs, authentication claims and model replies are untrusted.
+`triage` reads only the selected regular local `.eml`; symlinks, devices and FIFOs
+are refused. Exact bytes are preserved in `original.eml`, with SHA-256, size,
+source name and ingestion time. Duplicate headers, all body text, URLs, filenames,
+authentication claims and model replies remain untrusted data.
 
-Defaults in [`Limits`](../src/mail_triage/schemas.py) apply before/during MIME
-parsing and payload inspection:
-
-| Budget | Default |
+| MIME budget | Default |
 | --- | ---: |
 | Raw message | 5 MiB |
 | MIME parts, including containers | 100 |
-| MIME nesting, root counts as 1 | 12 |
+| Nesting, root counts as 1 | 12 |
 | Cumulative MIME headers | 128 KiB |
 | Individual line | 32 KiB |
 | Cumulative decoded payloads | 5 MiB |
 | Message text | 100,000 characters |
 
-Malformed or over-budget inputs fail rather than producing a partial safety
-assessment. Text without a charset uses strict US-ASCII; unsupported charsets
-or invalid encoded text fail rather than being silently repaired. These
-application limits do not provide an OS process sandbox;
-stdlib parser-hook compatibility is covered by regression tests. Validate new
-Python versions before upgrading.
+Depth and part limits apply during parser construction. Malformed/over-budget
+inputs fail rather than yielding a partial safety assessment. Missing charset
+means strict US-ASCII; invalid text/unsupported charsets fail closed. These are
+application bounds, not an OS sandbox. Private stdlib-hook behavior is tested on
+Python 3.12 and must be reviewed for interpreter upgrades.
 
-Attachments are inventoried by metadata/hash, never executed, opened by helper
-applications, unpacked or written under attacker-chosen filenames. Nested
-message/container hashes currently describe parser reserialization, not exact
-embedded bytes; the report warns about this limitation. Nested content is not
-merged into the outer message's analysis.
+Attachments are metadata/hash inventory only: no execution, helper applications,
+unpacking, or attacker-selected filesystem paths. For local nested messages and
+containers, inventory hashes/sizes describe parser reserialization, with an
+explicit warning; child identity/body does not merge into the wrapper. Graph
+retrieval separately stores exact returned original MIME bytes, without using
+that serialization. Graph's returned bytes are not an attestation of original
+SMTP wire bytes or sender authentication.
 
-The report escapes all message-derived HTML, metadata and JSON as inert text,
-shows control/bidi characters visibly, and uses a restrictive CSP. Message URLs
-are not clickable report links and are never fetched. Parsing performs no DNS,
-URL retrieval, reputation query or model request. No service listener is started.
+HTML, metadata and JSON are escaped as inert report text. Control/bidi characters
+are displayed visibly and a restrictive CSP applies. Message URLs are not
+clickable report links and are never fetched. Parsing performs no DNS, network
+or model request. No listener/background service is started.
 
-Case directories use mode `0700` and files `0600`; existing output paths are
-refused. This is access control, not encryption or a retention system. Case
-artifacts contain the original message and may contain personal data: operators
-must control local access, backups, sharing and deletion. Keep real cases and
-credentials outside source control. This repository's fixtures are authored,
-non-sensitive mechanics examples, not a detection benchmark.
+## Case storage and secrets
 
-## Evidence and model boundary
+New case directories use `0700`, files use `0600`, and existing output paths are
+refused. Fixed artifact names are independent of email filenames. This is access
+control, not encryption or retention. Connector artifact writes fsync file and
+directory; report updates use fsynced private temporary files and atomic rename.
+There is no transaction covering every artifact in a case. Real cases can contain
+personal data; operators control access, backup, sharing and deletion and keep them out of
+source control. Checked-in fixtures are authored non-sensitive mechanics examples.
 
-Uploaded `Authentication-Results`, `Received`, `Return-Path` and DKIM metadata
-do not establish authentication. An allowlisted service name inside the message
-does not change that. SPF, DKIM, DMARC and alignment remain `UNKNOWN` without
-independently trusted evidence; no offline cryptographic DKIM pass is claimed.
-The [trusted-ingress contract](integrations.md#trusted-ingress-the-next-smallest-step)
-describes the required future boundary.
+Connector configuration is nonsecret typed JSON from one explicit path.
+Credentials are supplied only by explicit JSON standard input and held as
+`SecretStr`; there is no environment, keychain, credential-file, account discovery
+or token-acquisition path. Keys must not appear in config, arguments, logs or
+reports. API errors are reduced to static failure codes/classes. Reports retain
+selected source/hash/time/receipt fields rather than arbitrary API responses or
+credential-bearing URLs. Submitting a real message still discloses it to each
+explicitly enabled service; model input is minimized as described in [models](models.md).
 
-Keep deterministic content observations, authentication, reputation and model
-hypotheses independent. `OBSERVED` means an observation was produced, not a pass
-or malicious verdict. `NOT_RUN` means a stage was not executed; `UNKNOWN` means
-the evidence cannot establish the result; `ERROR` must never become success.
+## Controlled egress
 
-Pydantic AI has no function tools or action capabilities; it requires an
-explicitly injected model object and validates bounded output and existing
-finding-ID citations. Citation validity does not prove the interpretation.
-Email instructions and model replies cannot select endpoints, execute actions,
-mutate evidence or authenticate a sender. DSPy is limited to separately authored,
-held-out evaluation examples; no live-email optimization or training runs.
-Scripted model tests are labeled `STUB`. See [model limits](models.md).
+Only the separate `graph-ingest` path can use configured adapters; its CLI
+requires `--allow-egress` and explicit secrets input. `connect-demo` injects
+`httpx.MockTransport` in code and cannot turn a response/email into a live
+connection. Ordinary `triage` remains offline regardless of connector settings.
+No live connection is part of the verification evidence.
 
-## Future egress
+[`ControlledTransport`](../src/mail_triage/transport.py) enforces:
 
-No network adapter is implemented. Before enabling one, require operator-owned
-configuration and enforce these controls outside prompt instructions:
+- One explicit bare HTTPS origin and exact method/raw-path routes per adapter.
+  No message-derived provider, URL, query, redirect, proxy or credential destination.
+- An exact operator-configured IP pin, avoiding DNS/rebinding; original Host and
+  TLS SNI are retained with TLS verification enabled. No DNS fallback occurs.
+- Non-global pins only with explicit `allow_private_ip`; loopback, link-local,
+  multicast, unspecified and equivalent mapped-address destinations are refused
+  even with that opt-in. This is not a blanket private-network allowance.
+- No redirects, retries, ambient proxies or compressed responses; request/response
+  bytes, declared lengths and connect/read/write/total durations are bounded.
+  Graph and configured model operations also impose an overall deadline.
+- No following message or API links, pagination, rule feeds, model registry
+  lookup, tool requests or response-directed requests.
 
-- Allowlist specific HTTPS service origins and paths; message data must never
-  choose a URL, credential destination, provider, proxy or redirect target.
-- Resolve and validate destinations, then bind the connection to approved
-  addresses while validating TLS hostnames. Defend against DNS rebinding; deny
-  loopback, link-local, private, multicast and metadata-service destinations.
-  An approved self-hosted service needs an explicit pinned address/port exception,
-  never a blanket private-network allowance.
-- Disable redirects and ambient proxy inheritance. Bound request/response bytes,
-  connection/read/total deadlines, concurrency and retries. Do not follow links
-  supplied by an API response or message.
-- Keep credentials out of reports/logs. Record request intent, artifact hash,
-  source, time, outcome and sanitized failure class. Validate external responses
-  as untrusted input; preserve provenance without accepting embedded actions.
-- Review what each service itself can fetch, execute, retain or send onward.
-  Approving one API endpoint does not approve that service's downstream egress.
+The allowed operations are Graph's selected wrapper/attachment GETs,
+Assemblyline `POST /api/v4/submit/`, Sublime `POST /v0/messages/analyze`, and model
+`POST /v1/chat/completions`. A fixed pin can become stale; the operator maintains
+it and must have a certificate trusted by HTTPX's default certifi CA bundle.
+No insecure TLS or custom CA-file option exists. Controls here do not restrict the
+selected service's own execution, retention, logging or downstream network access;
+review those separately.
 
-Use synthetic fixtures and a local mock endpoint to test blocked destinations,
-redirects, oversized responses, timeouts and provenance failures before any
-authorized connection to a real service.
+Before a service POST, an exclusive durable per-case claim records hashes of
+service/endpoint/input/rules and intent time. Claims persist after failure or
+uncertain timeout and block automatic repeat submission within that case. No
+retry/reset/poll operation is implemented. New cases can resubmit: this is not
+global or server-side idempotency. A transport error may mean the service accepted
+the original; it remains an uncertain outcome. Artifacts are preserved before
+POSTs and partial cases retain individual failure evidence.
+
+## Evidence and model separation
+
+`Authentication-Results`, `Received`, `Return-Path` and DKIM metadata cannot
+self-authenticate. An allowlisted `authserv-id`, Graph access, Assemblyline receipt,
+Sublime response or model hypothesis does not change that. SPF, DKIM, DMARC and
+alignment stay `UNKNOWN` without independently trusted evidence; no offline
+cryptographic DKIM pass or invented gateway spam rate is claimed. See the
+[trusted-ingress requirements](integrations.md#authentication-still-needs-trusted-ingress).
+
+`OBSERVED` means an observation/response was produced, not an authentication pass,
+malicious verdict or safe result. `NOT_RUN` means a stage did not execute;
+`UNKNOWN` means evidence cannot establish the answer; `ERROR` cannot become
+success. Independent deterministic evidence and `REVIEW_REQUIRED` remain intact.
+
+Pydantic AI accepts one typed content hypothesis with existing unique finding
+citations. The schema-only output function has no executable action capability.
+Citation integrity does not establish semantic truth. Email/model text cannot
+select endpoints, run tools or mutate other evidence. DSPy uses separately
+authored held-out fixtures, never live-email training or optimization. Framework
+scripted tests are `STUB`; HTTP connector tests/demo are `MOCK`. Neither is a live
+integration or phishing-accuracy test.

@@ -1,0 +1,44 @@
+[
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "graph.example.invalid",
+    "path": "/v1.0/users/reports%40example.invalid/messages/synthetic-report/$value",
+    "request_bytes": 0
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "graph.example.invalid",
+    "path": "/v1.0/users/reports%40example.invalid/messages/synthetic-report/attachments/original-attachment",
+    "request_bytes": 0
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "graph.example.invalid",
+    "path": "/v1.0/users/reports%40example.invalid/messages/synthetic-report/attachments/original-attachment/$value",
+    "request_bytes": 0
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "POST",
+    "logical_host": "assemblyline.example.invalid",
+    "path": "/api/v4/submit/",
+    "request_bytes": 2406
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "POST",
+    "logical_host": "sublime.example.invalid",
+    "path": "/v0/messages/analyze",
+    "request_bytes": 2717
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "POST",
+    "logical_host": "model.example.invalid",
+    "path": "/v1/chat/completions",
+    "request_bytes": 3470
+  }
+]

@@ -721,6 +721,7 @@ name = "mail-triage"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "pydantic" },
 ]
 
@@ -740,6 +741,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dspy", marker = "extra == 'models'", specifier = "==3.4.1" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pydantic-ai-slim", marker = "extra == 'models'", specifier = "==2.56.0" },
 ]
