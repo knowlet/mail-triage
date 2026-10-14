@@ -84,7 +84,7 @@ with exit 2 and no case directory: [rejection smoke output](../demo/rejection-sm
 
 ## Repository and environment
 
-Local `main` initialization: `ed3832b`,
+Local `main` initialization: `16c2e13b28a30894b0361580232f40405a6b0393`,
 `chore: initialize isolated mail triage project`.
 Implementation branch: `feat/offline-triage`; feature commit uses
 `feat: add bounded offline email triage and typed evidence reports`.
@@ -92,17 +92,22 @@ Local commits are unsigned: the configured GPG agent was inaccessible in the
 filesystem sandbox. GPG reported `Operation not permitted` creating a temporary
 file under `.gnupg`, then `can't connect to the agent`, `No agent running`,
 `FAILURE sign 33554509`, and `gpg failed to sign the data`. This was an operational
-tool failure, not an automatic permission-review rejection. The next commit
-commands used `git -c commit.gpgsign=false`; signing was not retried and no global
-Git/GPG setting, credential, keyring access or permission was changed.
+tool failure, not an automatic permission-review rejection. The original local
+commit commands used `git -c commit.gpgsign=false`. Before public publication,
+the authenticated GitHub identity was verified as `knowlet`, ID `4388697`, and
+only this task's unpublished author/committer metadata was rewritten to that
+account's standard GitHub noreply address. Reviewed tree content was preserved.
+This rewrite used unsigned `git commit-tree` without invoking GPG or changing
+signing settings. Signing was not retried and no global Git/GPG setting,
+credential, keyring access or permission was changed.
 
 The read-only network-authorized `gh auth status` succeeded for the existing
 active `knowlet` account. `gh repo list knowlet --limit 1000` found no
 `mail-triage` name collision. Proposed remote: **public `knowlet/mail-triage`**,
-following the user's explicit public-project request. Publication remains on hold
-for parent review.
-No remote was created/configured/published; no PR, merge, deployment or release
-was made. No listener or background process remains running.
+following the user's explicit public-project request. The parent accepted the
+first-slice review before authorizing publication and one Draft PR. At the
+completion of the initial review, no remote or PR had been created. No merge,
+deployment or release is included. No project listener or background process runs.
 
 ## Remaining limits and next step
 
@@ -145,5 +150,7 @@ JSON and HTML artifacts were preserved; the improved HTML is a separate renditio
 The tracked inventory contains only source/tests, package metadata and lockfile,
 documentation, and authored synthetic fixture/demo artifacts. No cache, virtual
 environment, dependency binary, credential/private-key indicator, or unrelated
-file was found. No remote publication is authorized by this review itself;
-the parent publication hold remains in effect.
+file was found. The review itself is acceptance evidence; publication follows
+the user's separately given public-project instruction. The bounded GitHub CI
+workflow installs pinned dependencies and repeats the existing local checks.
+CI success is reported only after the exact final head has completed.

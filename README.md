@@ -108,7 +108,12 @@ collector and separately authorized, controlled egress.
 ## Repository state
 
 Local `main` holds the clean initialization commit. Development is on
-`feat/offline-triage`. Proposed remote: **public `knowlet/mail-triage`**, as explicitly
-requested by the user after the initial private-default proposal. The
-read-only name-collision check found no matching repository. No remote was
-created, configured, or published, and no PR was opened.
+`feat/offline-triage`, prepared for a Draft PR against the public
+[`knowlet/mail-triage`](https://github.com/knowlet/mail-triage) repository, as
+explicitly requested by the user. Review, merge and deployment are separate steps.
+
+The [CI workflow](.github/workflows/ci.yml) runs on pull requests and pushes to
+`main`, with read-only repository permissions and a 15-minute job deadline. It
+installs the locked dependencies and runs the same `make check` used locally.
+Tests deny network/DNS access and use scripted model backends; no external email
+integration or real inference is enabled in CI. Action revisions and uv are pinned.
