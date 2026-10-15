@@ -1,0 +1,18 @@
+{
+  "disposition": "REVIEW_REQUIRED",
+  "sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+  "raw_bytes": 1966,
+  "content_finding_ids": [
+    "content.urgency_language",
+    "content.credential_language",
+    "content.reply_to_domain_mismatch",
+    "content.risky_attachment_extension",
+    "content.html_active_syntax",
+    "content.url_observed"
+  ],
+  "authentication": "UNKNOWN",
+  "external_integrations": "NOT_RUN",
+  "model_stages": "NOT_RUN",
+  "gateway_spam_rate": "UNKNOWN",
+  "output_directory": "demo/offline-case"
+}
