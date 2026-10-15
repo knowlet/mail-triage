@@ -40,3 +40,16 @@ References: [HTTPX transports](https://www.python-httpx.org/advanced/transports/
 [Pydantic AI agents](https://pydantic.dev/docs/ai/core-concepts/agent/),
 [Pydantic AI testing](https://pydantic.dev/docs/ai/testing/),
 [DSPy signatures](https://dspy.ai/learn/programming/signatures/).
+
+## Trusted-ingress additions
+
+The core now explicitly pins `idna==3.20` (IDNA2008 A-label normalization) and
+`tldextract==5.3.0` (offline organizational-domain resolution). The lock also
+adds `requests-file==3.0.1`; other HTTP dependencies were already present.
+No new cryptography dependency is added: HMAC-SHA256 uses Python's standard library.
+The receiver disables tldextract URL updates and disk caches, enables PRIVATE
+suffix rules, and checks its bundled snapshot SHA-256 against the contract pin.
+This is reproducible offline behavior, not a claim that the bundled PSL is current.
+See the [snapshot/version boundary](trusted-ingress.md#mechanisms-and-alignment).
+No upstream source or PSL asset is copied into this repository; locked packages
+retain their own licensing and provenance.

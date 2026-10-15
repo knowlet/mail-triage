@@ -38,6 +38,14 @@ def render_html(report: Report) -> str:
         _check(name.upper(), getattr(report.authentication, name))
         for name in ("spf", "dkim", "dmarc", "alignment")
     )
+    ingress = report.authentication.trusted_ingress
+    if ingress is not None:
+        auth += (
+            f"<h3>Ingress evidence source: {_escape(ingress.status)}</h3>"
+            f"<p>{_escape(ingress.reason_code)}</p>"
+            "<p>Source acceptance is separate from authentication results and message safety.</p>"
+            f"<pre>{_escape(json.dumps(ingress.results.model_dump(), indent=2))}</pre>"
+        )
     finding_rows = "".join(
         f"<article><h3>{_escape(item.code)}</h3><p>{_escape(item.description)}</p>"
         + "".join(f"<pre>{_escape(value)}</pre>" for value in item.evidence)

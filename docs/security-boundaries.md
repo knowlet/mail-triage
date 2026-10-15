@@ -150,3 +150,23 @@ select endpoints, run tools or mutate other evidence. DSPy uses separately
 authored held-out fixtures, never live-email training or optimization. Framework
 scripted tests are `STUB`; HTTP connector tests/demo are `MOCK`. Neither is a live
 integration or phishing-accuracy test.
+
+## Trusted-ingress receiver v1
+
+The [ingress contract](trusted-ingress.md) adds an explicit, offline authenticated
+evidence path; it does not change the trust of Graph responses, MIME headers or
+model output. HMAC-SHA256 verifies a separately provisioned issuer/key grant and
+protects exact bytes, original identity, audience, receive/expiry times, boundary
+and verifier version. A fresh, durable single-host replay claim is required.
+Missing evidence, invalid signatures, mismatched identity/hash, unsupported PSL/
+alignment claims and replay/storage failures leave all authentication UNKNOWN.
+The operator-controlled trust policy, expected object identity, service clock,
+PSL package and private replay filesystem are trusted inputs, not uploaded data.
+
+The shared HMAC key allows both endpoints to forge; it is not non-repudiation.
+A compromised authorized producer can lie about SMTP context or header stripping.
+Local comparison validates attestation consistency, not live SPF/DKIM/DNS execution.
+The signed boundary flag is never accepted by itself. Original MIME stays untouched,
+with forged and external headers retained as untrusted observations. Report JSON
+is historical output, not an authorization token or an alternative input verifier.
+No production tenant, gateway, key-custody or end-to-end delivery validation is claimed.

@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mail_triage.ingress_contract import IngressAssessment
+
 
 class Record(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -67,6 +69,7 @@ class Check(Record):
 
 
 class AuthenticationEvidence(Record):
+    trusted_ingress: IngressAssessment | None = None
     spf: Check
     dkim: Check
     dmarc: Check
@@ -98,7 +101,7 @@ class ReputationEvidence(Record):
 
 
 class Report(Record):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.1"
     application_version: str = "0.1.0"
     disposition: Literal["REVIEW_REQUIRED"] = "REVIEW_REQUIRED"
     provenance: Provenance

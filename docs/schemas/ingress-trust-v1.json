@@ -1,0 +1,141 @@
+{
+  "$defs": {
+    "KeyGrant": {
+      "additionalProperties": false,
+      "properties": {
+        "issuer_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "key_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Key Id",
+          "type": "string"
+        },
+        "tenant_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[\\x21-\\x7e]+$",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "mailbox_ids": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Mailbox Ids",
+          "type": "array"
+        },
+        "audience": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Audience",
+          "type": "string"
+        },
+        "boundary_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Boundary Id",
+          "type": "string"
+        },
+        "verifier_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Verifier Version",
+          "type": "string"
+        },
+        "not_before": {
+          "maximum": 253402300799,
+          "minimum": 0,
+          "title": "Not Before",
+          "type": "integer"
+        },
+        "not_after": {
+          "maximum": 253402300799,
+          "minimum": 0,
+          "title": "Not After",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "issuer_id",
+        "key_id",
+        "tenant_id",
+        "mailbox_ids",
+        "audience",
+        "boundary_id",
+        "verifier_version",
+        "not_before",
+        "not_after"
+      ],
+      "title": "KeyGrant",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "mail-triage.ingress-trust/1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "grants": {
+      "items": {
+        "$ref": "#/$defs/KeyGrant"
+      },
+      "maxItems": 32,
+      "minItems": 1,
+      "title": "Grants",
+      "type": "array"
+    },
+    "max_issuance_age_seconds": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Max Issuance Age Seconds",
+      "type": "integer"
+    },
+    "max_lifetime_seconds": {
+      "default": 900,
+      "maximum": 86400,
+      "minimum": 1,
+      "title": "Max Lifetime Seconds",
+      "type": "integer"
+    },
+    "max_receive_age_seconds": {
+      "default": 2592000,
+      "maximum": 7776000,
+      "minimum": 1,
+      "title": "Max Receive Age Seconds",
+      "type": "integer"
+    },
+    "clock_skew_seconds": {
+      "default": 60,
+      "maximum": 300,
+      "minimum": 0,
+      "title": "Clock Skew Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "schema_version",
+    "grants"
+  ],
+  "title": "IngressTrustPolicy",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mail-triage:ingress-trust-v1"
+}

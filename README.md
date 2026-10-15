@@ -55,6 +55,23 @@ attachments, follows message/API links, quarantines/deletes/replies to email,
 or sends messages. Service-side analysis may have its own execution, retention
 and onward-egress behavior and needs separate review.
 
+## Trusted-ingress authentication evidence (explicit, offline)
+
+A separate `trusted-ingress` command and Python API now verify a versioned,
+HMAC-SHA256 authenticated envelope from an explicitly provisioned ingress producer.
+They bind the exact MIME hash/length and independent original-object identity,
+enforce issuer/key/tenant/mailbox/audience/time/boundary policy, consume a durable
+replay claim, and recompute strict/relaxed SPF/DKIM alignment. Missing or rejected
+evidence leaves SPF, DKIM, DMARC and alignment UNKNOWN. No MIME header or Graph
+response can enable this path automatically; ordinary `triage` and `graph-ingest`
+retain their UNKNOWN behavior.
+
+Report schema 1.1 separates source acceptance from typed authentication outcomes,
+retains legacy 1.0 read compatibility, and never changes `REVIEW_REQUIRED`.
+See [the v1 contract, wire schemas, key model and CLI](docs/trusted-ingress.md).
+Tests use synthetic signed assertions; no live gateway or enterprise tenant has
+been authorized or validated. The HMAC scheme is symmetric, not non-repudiation.
+
 ## Connector demonstration: mocked HTTP only
 
 ```sh
@@ -184,9 +201,9 @@ Fixed pins require operator maintenance. The model endpoint must implement the
 strict supported chat-completions response shape.
 
 See [models](docs/models.md), [dependency provenance](docs/dependencies.md) and
-[delivery evidence](docs/implementation-report.md). The next step toward actual
-SPF/DKIM/DMARC results is a tested, authenticated trusted-ingress assertion
-contract bound to exact original hashes; mailbox retrieval alone is insufficient.
+[delivery evidence](docs/implementation-report.md). The trusted-ingress evidence receiver is implemented and synthetically tested.
+The remaining step is an authorized gateway producer and proven original-byte/identity
+binding to the enterprise reporting flow; mailbox retrieval alone is insufficient.
 
 The [CI workflow](.github/workflows/ci.yml) installs locked dependencies and runs
 the same checks with read-only repository permissions. No external integration or

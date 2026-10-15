@@ -227,12 +227,16 @@ and public-suffix handling, not the last two labels. Missing evidence remains
 [RFC 7208](https://www.rfc-editor.org/rfc/rfc7208.html#section-4.1) and
 [RFC 7489](https://www.rfc-editor.org/rfc/rfc7489.html#section-3.1).
 
-The next smallest authentication step is a versioned trusted-ingress assertion
-contract bound to exact original SHA-256, authenticated collector identity,
-receive time, policy version and replay-resistant event ID. Reject hash mismatch,
-unknown issuers, expiry/replay and missing provenance. Require attestation that
-forged internal assertions were stripped at the documented ingress boundary;
-a user-writable `trusted: true` flag is insufficient.
+The [versioned trusted-ingress receiver](trusted-ingress.md) is now implemented,
+with published wire schemas, explicit HMAC key grants, exact MIME hash/length and
+independent original identity binding, boundary attestation, receive/issuance/expiry
+checks, durable replay prevention and locally recomputed strict/relaxed alignment.
+Its explicit offline command/API is separate from Graph and configured connectors;
+there is no new email-header trust shortcut, live gateway producer or automatic
+Graph-to-ingress identity mapping. Missing/rejected evidence still means UNKNOWN.
+HMAC authenticates the configured producer but cannot prove its verifier is honest
+or replace production custody/permission validation. Report schema 1.1 preserves
+source acceptance separately from typed mechanism results and REVIEW_REQUIRED.
 
 Spam rates remain unavailable without a named telemetry source, numerator,
 denominator, time window, population and classification definition. A model or

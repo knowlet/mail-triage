@@ -223,3 +223,38 @@ in-scope/out-of-scope permission tests and service-specific retention/egress rev
 The project license remains undecided. No LICENSE has been added or inferred
 from upstream dependencies or engine licenses. Work continues in the existing
 feature/PR scope; no extra PR, merge, deployment or release is part of this change.
+
+## Trusted-ingress evidence receiver (2026-10-15)
+
+Implemented from PR #1 head `ca7915b591817954759c42a36bd5ede8be677cdd`.
+The unchanged baseline was independently rerun with all 347 tests passing.
+The new [v1 contract](trusted-ingress.md) adds three strict wire schemas, a
+MAC-authenticated envelope, issuer/key/scoped original identity and exact MIME
+binding, time/boundary gates, a durable single-host replay barrier and locally
+recomputed strict/relaxed authenticated alignment. It does not add an SMTP
+verifier, HTTP ingestion API, Graph custody mapping or live enterprise integration.
+
+Report schema 1.1 separates source acceptance from per-mechanism outcomes and
+retains legacy 1.0 read compatibility. The new explicit offline `trusted-ingress`
+CLI leaves ordinary triage/Graph authentication UNKNOWN. The message's raw claims
+remain untrusted even when separate evidence is accepted. Every case remains
+REVIEW_REQUIRED. See `ingress_contract.py`, `trusted_ingress.py`, `ingress_cli.py`,
+the schema export script and `tests/test_trusted_ingress.py`.
+
+Final development-tree validation: Ruff lint and formatting, strict mypy over
+19 source files, and **509 passing tests** (347 existing + 162 new synthetic
+cases/schema checks). Output is preserved in
+[trusted-ingress-verification.txt](../demo/trusted-ingress-verification.txt).
+The new cases include malformed/unsigned/MAC-tampered evidence, unknown and
+relabeled issuers, cross-tenant/mailbox/object and raw-byte substitutions,
+key/time/boundary/profile failures, concurrent replay, rotated-key and JSON-format
+replay, unsafe ledgers and fsync failures, forged headers, missing SMTP context,
+multiple/incomplete DKIM signatures, HELO/null reverse paths, IDNA/PSL PRIVATE/
+wildcard/exception rules, strict/relaxed and inconsistent DMARC claims, preserved
+legacy reports, and end-to-end CLI output/redaction. Tests globally deny sockets
+and DNS. HMAC keys and messages are explicitly synthetic/public test fixtures.
+
+This is development-tree evidence, not a claim that a later GitHub head passed
+CI. Exact-head GitHub Actions status is reported separately in PR #1 after push.
+No real enterprise Outlook tenant, gateway, policy retrieval, producer key custody,
+SMTP-time authentication, deployment, release or merge has been validated or done.

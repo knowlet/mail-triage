@@ -48,6 +48,12 @@ def build_report(raw: bytes, source_name: str, limits: Limits | None = None) -> 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
+    from mail_triage.ingress_cli import add_ingress_arguments
+
+    ingress = subcommands.add_parser(
+        "trusted-ingress", help="Verify separately signed, identity-bound ingress evidence offline"
+    )
+    add_ingress_arguments(ingress)
     triage = subcommands.add_parser("triage", help="Review one local regular .eml file offline")
     triage.add_argument("input", type=Path)
     triage.add_argument("--out", type=Path, required=True, help="New private case directory")
@@ -78,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
     readback.add_argument("--allow-egress", action="store_true", required=True)
     readback.add_argument("--secrets-stdin", action="store_true", required=True)
     args = parser.parse_args(argv)
+    if args.command == "trusted-ingress":
+        from mail_triage.ingress_cli import ingress_main
+
+        return ingress_main(args)
     if args.command != "triage":
         from mail_triage.connector_cli import connector_main
 
