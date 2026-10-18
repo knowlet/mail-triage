@@ -37,6 +37,10 @@ def ingress_main(args: argparse.Namespace) -> int:
     try:
         if args.out.exists() or args.out.is_symlink():
             raise FileExistsError
+        # Reject invalid parents before accepting evidence consumes its durable replay token.
+        # This is a preflight only: later write failures must not roll back consumed tokens.
+        if not args.out.absolute().parent.is_dir():
+            raise NotADirectoryError
         raw = read_eml(args.input, Limits())
         policy = IngressTrustPolicy.model_validate(
             strict_object(read_eml(args.trust_policy, Limits(max_raw_bytes=65536)))

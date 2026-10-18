@@ -683,6 +683,75 @@ def test_cli_end_to_end(
         assert (tmp_path / "case/original.eml").read_bytes() == RAW
 
 
+@pytest.mark.parametrize("parent_kind", ["missing", "file", "dangling_symlink"])
+def test_cli_invalid_output_parent_does_not_consume_replay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    parent_kind: str,
+) -> None:
+    import mail_triage.trusted_ingress as ingress
+
+    monkeypatch.setattr(ingress.time, "time", lambda: NOW)
+    (tmp_path / "message.eml").write_bytes(RAW)
+    (tmp_path / "policy.json").write_text(json.dumps(policy_data()))
+    (tmp_path / "evidence.json").write_bytes(signed())
+    ledger = tmp_path / "ledger"
+    ledger.mkdir(mode=0o700)
+    parent = tmp_path / "output-parent"
+    if parent_kind == "file":
+        parent.write_bytes(b"preserve-existing-file")
+    elif parent_kind == "dangling_symlink":
+        parent.symlink_to(tmp_path / "absent-target", target_is_directory=True)
+    credentials = json.dumps(
+        {"keys": [{"issuer_id": "synthetic-gateway", "key_id": "fixture-1", "key_hex": KEY.hex()}]}
+    ).encode()
+    args = [
+        "trusted-ingress",
+        str(tmp_path / "message.eml"),
+        "--evidence",
+        str(tmp_path / "evidence.json"),
+        "--trust-policy",
+        str(tmp_path / "policy.json"),
+        "--tenant-id",
+        IDENTITY.tenant_id,
+        "--mailbox-id",
+        IDENTITY.mailbox_id,
+        "--original-id",
+        IDENTITY.message_id,
+        "--replay-dir",
+        str(ledger),
+        "--secrets-stdin",
+    ]
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(credentials)))
+    assert main([*args, "--out", str(parent / "case")]) == 2
+    captured = capsys.readouterr()
+    assert json.loads(captured.err) == {"error": "ingress_input_or_configuration_rejected"}
+    assert not captured.out
+    assert not list(ledger.iterdir())
+    assert not (parent / "case").exists()
+    if parent_kind == "file":
+        assert parent.read_bytes() == b"preserve-existing-file"
+    if parent_kind != "missing":
+        parent.unlink()
+    parent.mkdir()
+
+    # Correcting the destination must leave the same valid envelope usable once.
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(credentials)))
+    assert main([*args, "--out", str(parent / "case")]) == 0
+    report = Report.model_validate_json((parent / "case/report.json").read_bytes())
+    assert report.authentication.trusted_ingress.status == "ACCEPTED"
+    assert (parent / "case/original.eml").read_bytes() == RAW
+    assert len(list(ledger.iterdir())) == 1
+
+    # Acceptance still consumes the durable token; changing output cannot bypass replay checks.
+    monkeypatch.setattr("sys.stdin", io.TextIOWrapper(io.BytesIO(credentials)))
+    assert main([*args, "--out", str(parent / "retry")]) == 3
+    report = Report.model_validate_json((parent / "retry/report.json").read_bytes())
+    rejected(report, "replayed_event")
+    assert len(list(ledger.iterdir())) == 1
+
+
 def test_missing_smtp_context_can_preserve_dkim_only_evidence(tmp_path: Path) -> None:
     p = payload()
     p["spf"].update(result="UNKNOWN", domain=None, smtp_peer_ip=None)
