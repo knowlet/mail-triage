@@ -83,7 +83,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     readback.add_argument("--allow-egress", action="store_true", required=True)
     readback.add_argument("--secrets-stdin", action="store_true", required=True)
+    osint = subcommands.add_parser(
+        "sender-osint", help="Opt-in MISP evidence for selected indicators"
+    )
+    osint.add_argument("input", type=Path)
+    osint.add_argument("--config", type=Path, required=True)
+    osint.add_argument("--out", type=Path, required=True)
+    osint.add_argument("--allow-egress", action="store_true", required=True)
+    osint.add_argument("--secrets-stdin", action="store_true", required=True)
     args = parser.parse_args(argv)
+    if args.command == "sender-osint":
+        from mail_triage.osint_cli import osint_main
+
+        return osint_main(args)
     if args.command == "trusted-ingress":
         from mail_triage.ingress_cli import ingress_main
 

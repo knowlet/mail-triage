@@ -5,7 +5,9 @@ selected Microsoft Graph MIME retrieval, Assemblyline submission/result readback
 analysis and a self-hosted model. All default to disabled, without implicit
 endpoints or credentials. Tests and `connect-demo` use `httpx.MockTransport` only.
 No live tenant, service, model, consent or credential setup was performed.
-Sender OSINT, gateway reputation and gateway spam-rate telemetry are not implemented.
+Sender OSINT now supports explicitly selected, bounded self-hosted MISP lookups;
+see [the OSINT contract](sender-osint.md). Gateway reputation and gateway
+spam-rate telemetry remain unimplemented.
 
 ## Configuration and credentials
 

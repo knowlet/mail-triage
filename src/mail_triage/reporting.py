@@ -90,6 +90,10 @@ def render_html(report: Report) -> str:
         if report.provenance.source_kind == "graph_original"
         else "OFFLINE CASE REPORT"
     )
+    if report.sender_osint_evidence is not None:
+        mode = report.sender_osint_evidence.execution_mode
+        if mode != "NOT_RUN":
+            report_kind = f"{mode} OSINT · EXPLICIT CONNECTOR REPORT"
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

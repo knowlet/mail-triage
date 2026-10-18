@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from mail_triage.ingress_contract import IngressAssessment
+from mail_triage.sender_osint import OsintEvidence
 
 
 class Record(BaseModel):
@@ -101,7 +102,8 @@ class ReputationEvidence(Record):
 
 
 class Report(Record):
-    schema_version: Literal["1.0", "1.1"] = "1.1"
+    schema_version: Literal["1.0", "1.1", "1.2"] = "1.1"
+    sender_osint_evidence: OsintEvidence | None = None
     application_version: str = "0.1.0"
     disposition: Literal["REVIEW_REQUIRED"] = "REVIEW_REQUIRED"
     provenance: Provenance

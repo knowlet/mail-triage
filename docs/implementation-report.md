@@ -258,3 +258,30 @@ This is development-tree evidence, not a claim that a later GitHub head passed
 CI. Exact-head GitHub Actions status is reported separately in PR #1 after push.
 No real enterprise Outlook tenant, gateway, policy retrieval, producer key custody,
 SMTP-time authentication, deployment, release or merge has been validated or done.
+
+## Sender OSINT phase 1 (2026-10-18)
+
+Added an explicitly enabled, self-hosted MISP adapter and `sender-osint` CLI.
+Queries use only bounded operator-selected IP/domain indicators, the existing
+pinned HTTPS transport, explicit stdin keys and egress permission. Response
+projections preserve per-source status, query/update times, response hashes,
+attribute UUIDs, update recency and conflicting current detection-use flags.
+No MISP score or flag changes message disposition/authentication. DNS, automatic
+sender-IP extraction and gateway telemetry remain outside this phase.
+
+Local own-cloud validation (`PYTHONPATH=src make check`, reusing the pinned
+dependency environment while forcing this worktree source): Ruff lint passed,
+44 files format-clean, strict mypy passed on 21 source files, and **574 tests
+passed** (509 existing + 65 added). See
+[sender-osint-verification.txt](../demo/sender-osint-verification.txt). New tests
+cover success, exact filtering, stale/future updates, two-source flag conflict,
+mixed service errors, absent results, malformed/deleted/oversized attributes,
+redirect/timeout rejection, cancellation, real per-run pacing, CLI secret
+redaction and legacy report loading. Socket/DNS denial remains enabled for all
+tests. No live customer data, service credentials or external MISP query was
+used. Existing demo reports are unchanged. This local transcript does not claim
+that the later published head passed GitHub CI; exact-head CI is separate.
+
+See [research, CLI and limitations](sender-osint.md). Production service/version
+acceptance, distributed quota enforcement, feed governance and detection-quality
+measurement remain unverified. No merge, deployment or release was performed.

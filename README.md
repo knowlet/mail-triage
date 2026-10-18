@@ -41,7 +41,8 @@ mailbox read or email action. It does not import the configured connector flow.
 | MIME/provenance | Bounded parsing, original bytes/SHA-256, attachment inventory | Same bounds on Graph wrapper and original, stored separately |
 | SPF, DKIM, DMARC, alignment | `UNKNOWN` | Still `UNKNOWN`; Graph retrieval and API replies do not authenticate the sender |
 | Content | Independent deterministic wording/domain/attachment/HTML observations | Same observations; optional model hypothesis kept separate |
-| Sender OSINT/gateway reputation | `NOT_RUN` | Not implemented |
+| Sender OSINT | `NOT_RUN` | Opt-in bounded self-hosted MISP lookups of operator-selected IP/domain indicators; untrusted evidence only |
+| Gateway reputation | `NOT_RUN` | Not implemented |
 | Gateway spam rate | `UNKNOWN` | `UNKNOWN`; no named telemetry/denominator/window |
 | Outlook reports | `NOT_RUN` | Three selected Graph GETs; no mailbox listing or token acquisition |
 | Assemblyline | `NOT_RUN` | One selected EML submission; optional bounded polling and separate untrusted result readback |
@@ -215,3 +216,12 @@ No project license has been selected or added. Public source availability does
 not mean this project is offered under an open-source license. Selecting a license
 for the original code remains an owner decision; upstream dependency or engine
 licenses are separate and have not been adopted for this project.
+
+## Sender OSINT (opt-in)
+
+`sender-osint` adds bounded MISP evidence for explicitly selected IP/domain
+indicators. Ordinary `triage` remains offline. See [setup, source research and
+limits](docs/sender-osint.md). No DNS lookup or real MISP acceptance has been
+performed; synthetic tests cover current/stale/future updates, conflicting
+source flags, missing evidence and service failures. All cases still require
+review, and missing trusted authentication/gateway statistics stay unknown.
