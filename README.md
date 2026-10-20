@@ -34,6 +34,21 @@ UV_CACHE_DIR=.uv-cache uv sync --locked --index-url https://pypi.org/simple
 `triage` performs no network request, model inference, DNS lookup, URL retrieval,
 mailbox read or email action. It does not import the configured connector flow.
 
+## Offline TLS transport verification
+
+`make check` also runs real client/server TLS handshakes over Python SSL
+MemoryBIO byte carriers, using the normal production HTTPX transport and SSL
+context. These tests require the `openssl` executable to generate a temporary,
+two-day fixture certificate. Only that test context trusts the fixture; no system
+trust store changes, sockets, DNS requests, credentials or external services are
+used, and the suite's network prohibition remains enabled.
+
+The tests verify logical-host certificate validation and SNI despite the pinned
+IP, exact synthetic MIME bytes through TLS/HTTP, rejection of untrusted and
+wrong-host certificates before sending the body, and redirect/response-size/total
+deadline enforcement. This is not a TCP reachability test or acceptance of a real
+Outlook, MISP, Assemblyline, Sublime or model service. Those remain unverified.
+
 ## Implemented stages
 
 | Stage | Offline `triage` | Explicit connector flow |
