@@ -1,0 +1,19 @@
+{
+  "execution_mode": "MOCK",
+  "wrapper_sha256": "4d7cc39451d64bb77f4998626db6de730cfee7e50ba059802a416a812d8c2bf3",
+  "original_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+  "mailbox": "reports@example.invalid",
+  "wrapper_message_id": "synthetic-report",
+  "original_attachment_id": "original-attachment",
+  "source_endpoint": "https://graph.example.invalid",
+  "attachment_metadata": {
+    "attachment_type": "#microsoft.graph.itemAttachment",
+    "attachment_id": "original-attachment",
+    "content_type": "message/rfc822",
+    "declared_size": 1966,
+    "is_inline": false
+  },
+  "wrapper_artifact": "wrapper.eml",
+  "original_artifact": "original.eml",
+  "original_byte_source": "Graph itemAttachment /$value response, not MIME reserialization"
+}

@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "execution_mode": "MOCK",
+  "status": "COMPLETED",
+  "graph": {
+    "execution_mode": "MOCK",
+    "wrapper_sha256": "4d7cc39451d64bb77f4998626db6de730cfee7e50ba059802a416a812d8c2bf3",
+    "original_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+    "mailbox": "reports@example.invalid",
+    "wrapper_message_id": "synthetic-report",
+    "original_attachment_id": "original-attachment",
+    "source_endpoint": "https://graph.example.invalid",
+    "attachment_metadata": {
+      "attachment_type": "#microsoft.graph.itemAttachment",
+      "attachment_id": "original-attachment",
+      "content_type": "message/rfc822",
+      "declared_size": 1966,
+      "is_inline": false
+    },
+    "wrapper_artifact": "wrapper.eml",
+    "original_artifact": "original.eml",
+    "original_byte_source": "Graph itemAttachment /$value response, not MIME reserialization"
+  },
+  "assemblyline": {
+    "status": "OBSERVED",
+    "service": "assemblyline",
+    "execution_mode": "MOCK",
+    "reason": "untrusted_response_observed_no_safety_or_identity_verdict",
+    "input_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+    "response_sha256": "d08c096c847dd396604525c594cc4069ba63c588fbbd58622045f27263f6f9cc",
+    "source_origin": "https://assemblyline.example.invalid",
+    "observed_at": "2026-10-14T09:25:00.058816Z",
+    "external_id": "synthetic-submission"
+  },
+  "sublime": {
+    "status": "OBSERVED",
+    "service": "sublime",
+    "execution_mode": "MOCK",
+    "reason": "untrusted_response_observed_no_safety_or_identity_verdict",
+    "input_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+    "response_sha256": "5fbe67866be3605cf4b6dff6989e618f734c2cbbdb9cb4de0c4fdb1a0b870369",
+    "source_origin": "https://sublime.example.invalid",
+    "observed_at": "2026-10-14T09:25:01.088410Z",
+    "external_id": null
+  },
+  "model": {
+    "status": "OBSERVED",
+    "reason": "Untrusted model hypothesis; independent human review is required.",
+    "backend_kind": "MOCK",
+    "opinion": {
+      "content_risk": "HIGH",
+      "summary": "MOCK hypothesis from authored fixture; no real inference ran.",
+      "finding_ids": [
+        "content.urgency_language"
+      ]
+    },
+    "input_warnings": [
+      "Model input uses bounded text/evidence excerpts; original evidence is unchanged."
+    ]
+  },
+  "assemblyline_analysis": {
+    "status": "COMPLETED",
+    "reason": "completed_external_analysis",
+    "execution_mode": "MOCK",
+    "sid": "synthetic-submission",
+    "input_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+    "source_origin": "https://assemblyline.example.invalid",
+    "pinned_ip": "192.0.2.20",
+    "started_at": "2026-10-14T09:25:00.065808Z",
+    "finished_at": "2026-10-14T09:25:01.075050Z",
+    "polls": 2,
+    "requests": [
+      {
+        "operation": "completion",
+        "route": "/api/v4/submission/is_completed/synthetic-submission/",
+        "requested_at": "2026-10-14T09:25:00.066502Z",
+        "observed_at": "2026-10-14T09:25:00.067197Z",
+        "http_status": 200,
+        "response_sha256": "9fa378dde91df177e576b6e5cae978a8c9d507093a33b357765a2217a95a7e28"
+      },
+      {
+        "operation": "completion",
+        "route": "/api/v4/submission/is_completed/synthetic-submission/",
+        "requested_at": "2026-10-14T09:25:01.068509Z",
+        "observed_at": "2026-10-14T09:25:01.070140Z",
+        "http_status": 200,
+        "response_sha256": "17f802c6e8fbc63dcd573539ff275f9e5da17a91a48011683546c9fc3e75bb6a"
+      },
+      {
+        "operation": "full",
+        "route": "/api/v4/submission/full/synthetic-submission/",
+        "requested_at": "2026-10-14T09:25:01.070394Z",
+        "observed_at": "2026-10-14T09:25:01.074691Z",
+        "http_status": 200,
+        "response_sha256": "770f5a7ad991fda146d0c09d2394cf840ea655a434dee93d52dede5e98bfdf13"
+      }
+    ],
+    "analysis": {
+      "state": "completed",
+      "raw_max_score": 350,
+      "file_count": 1,
+      "error_count": 0,
+      "result_count": 1,
+      "returned_error_count": 0,
+      "missing_result_count": 0,
+      "missing_error_count": 0,
+      "missing_file_count": 0,
+      "partial_result_count": 0,
+      "untrusted_service_names": [
+        "SyntheticStatic"
+      ]
+    }
+  }
+}

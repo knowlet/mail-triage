@@ -1,0 +1,74 @@
+[
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "graph.example.invalid",
+    "path": "/v1.0/users/reports%40example.invalid/messages/synthetic-report/$value",
+    "request_bytes": 0,
+    "requested_at": "2026-10-14T09:25:00.008465+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "graph.example.invalid",
+    "path": "/v1.0/users/reports%40example.invalid/messages/synthetic-report/attachments/original-attachment",
+    "request_bytes": 0,
+    "requested_at": "2026-10-14T09:25:00.023065+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "graph.example.invalid",
+    "path": "/v1.0/users/reports%40example.invalid/messages/synthetic-report/attachments/original-attachment/$value",
+    "request_bytes": 0,
+    "requested_at": "2026-10-14T09:25:00.025476+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "POST",
+    "logical_host": "assemblyline.example.invalid",
+    "path": "/api/v4/submit/",
+    "request_bytes": 2406,
+    "requested_at": "2026-10-14T09:25:00.058529+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "assemblyline.example.invalid",
+    "path": "/api/v4/submission/is_completed/synthetic-submission/",
+    "request_bytes": 0,
+    "requested_at": "2026-10-14T09:25:00.066895+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "assemblyline.example.invalid",
+    "path": "/api/v4/submission/is_completed/synthetic-submission/",
+    "request_bytes": 0,
+    "requested_at": "2026-10-14T09:25:01.069349+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "GET",
+    "logical_host": "assemblyline.example.invalid",
+    "path": "/api/v4/submission/full/synthetic-submission/",
+    "request_bytes": 0,
+    "requested_at": "2026-10-14T09:25:01.071317+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "POST",
+    "logical_host": "sublime.example.invalid",
+    "path": "/v0/messages/analyze",
+    "request_bytes": 2717,
+    "requested_at": "2026-10-14T09:25:01.087549+00:00"
+  },
+  {
+    "execution_mode": "MOCK",
+    "method": "POST",
+    "logical_host": "model.example.invalid",
+    "path": "/v1/chat/completions",
+    "request_bytes": 3470,
+    "requested_at": "2026-10-14T09:25:01.643572+00:00"
+  }
+]
