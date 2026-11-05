@@ -89,7 +89,14 @@ def _validate_headers(message: EmailMessage) -> None:
             raise IngestError("MIME parser reported a malformed message.")
         # Headerregistry parses lazily. Access every value, including headers
         # on attachments, then reject any defects it would otherwise repair.
-        for _name, value in part.items():
+        try:
+            headers = part.items()
+        except AttributeError as exc:
+            # Python's address header parser can raise AttributeError instead
+            # of recording a defect for malformed address groups. Keep this
+            # guard at the stdlib parsing boundary, not around our inventory.
+            raise IngestError("MIME parser reported a malformed header.") from exc
+        for _name, value in headers:
             if getattr(value, "defects", ()):
                 raise IngestError("MIME parser reported a malformed header.")
 

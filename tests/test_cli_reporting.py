@@ -89,6 +89,27 @@ def test_oversized_cli_input_creates_no_case(tmp_path: Path) -> None:
     assert not output.exists()
 
 
+@pytest.mark.parametrize("header", [b"From", b"To", b"Reply-To"])
+def test_malformed_address_group_is_rejected_without_case_or_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], header: bytes
+) -> None:
+    source = tmp_path / "malformed.eml"
+    source.write_bytes(header + b': :; a="\r\n\r\nPRIVATE_SYNTHETIC_BODY')
+    output = tmp_path / "rejected"
+
+    assert main(["triage", str(source), "--out", str(output)]) == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    error = json.loads(captured.err)
+    assert error["error"] == "input_rejected"
+    assert "Malformed" in error["detail"] or "malformed" in error["detail"]
+    assert "PRIVATE_SYNTHETIC_BODY" not in captured.err
+    assert "Traceback" not in captured.err
+    assert not output.exists()
+    assert not list(tmp_path.glob(".mail-triage-*"))
+
+
 def test_terminal_summary_is_json_and_does_not_echo_message_content(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

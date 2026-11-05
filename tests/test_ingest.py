@@ -99,6 +99,16 @@ def test_malformed_messages_fail_cleanly(raw: bytes) -> None:
         parse_eml(raw)
 
 
+@pytest.mark.parametrize("header", [b"From", b"To", b"Reply-To"])
+@pytest.mark.parametrize("nested", [False, True])
+def test_malformed_address_group_fails_cleanly(header: bytes, nested: bool) -> None:
+    raw = header + b': :; a="\r\n\r\nbody'
+    if nested:
+        raw = multipart([b"Content-Type: message/rfc822\r\n\r\n" + raw])
+    with pytest.raises(IngestError):
+        parse_eml(raw)
+
+
 def test_missing_multipart_close_boundary_is_rejected() -> None:
     raw = multipart([b"Content-Type: text/plain\r\n\r\nbody"]).removesuffix(b"--BOUNDARY--\r\n")
     with pytest.raises(IngestError):
