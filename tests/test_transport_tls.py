@@ -8,16 +8,68 @@ context without disabling hostname or certificate verification.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import re
 import shutil
 import ssl
 import subprocess
 from pathlib import Path
 
+import certifi
 import httpcore
 import httpx
 import pytest
 
 from mail_triage.transport import ConnectorError, ControlledTransport, EndpointPolicy, build_client
+
+
+def test_production_tls_uses_patched_certifi_bundle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Inspect the connector's actual CA input without making a network request."""
+    contexts: list[tuple[ssl.SSLContext, object]] = []
+    original_factory = ssl.create_default_context
+
+    def factory(*args: object, **kwargs: object) -> ssl.SSLContext:
+        context = original_factory(*args, **kwargs)
+        contexts.append((context, kwargs.get("cafile")))
+        return context
+
+    monkeypatch.setattr(ssl, "create_default_context", factory)
+    client = build_client(
+        EndpointPolicy(
+            origin="https://service.example.test", pinned_ip="192.0.2.10", allow_private_ip=True
+        ),
+        {("POST", "/analyze")},
+    )
+    try:
+        assert contexts, "The production HTTP transport must construct a TLS context."
+        for context, cafile in contexts:
+            assert context.verify_mode == ssl.CERT_REQUIRED
+            assert context.check_hostname
+            assert context.get_ca_certs(), "The production CA store must not be empty."
+            assert isinstance(cafile, str)
+            assert Path(cafile).resolve() == Path(certifi.where()).resolve()
+            certificates = re.findall(
+                r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+                Path(cafile).read_text(encoding="ascii"),
+                re.DOTALL,
+            )
+            fingerprints = {
+                hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificate)).hexdigest()
+                for certificate in certificates
+            }
+            assert fingerprints, "The certifi bundle must not be empty."
+            # The unaffected emSign Root CA - G1 remains in the fixed bundle.
+            assert "40f6af0346a99aa1cd1d555a4e9cce62c7f9634603ee406615833dc8c8d00367" in (
+                fingerprints
+            )
+            # GHSA-6q48-6c7w-9gw2: emSign ECC Root CA - G3 must not be in the CA input.
+            # Inspect the PEM, not get_ca_certs(): a hardened runtime may include
+            # this certificate as an explicitly rejected OpenSSL AUX entry.
+            assert "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b" not in (
+                fingerprints
+            )
+    finally:
+        asyncio.run(client.aclose())
 
 
 @pytest.fixture(scope="module")
