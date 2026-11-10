@@ -53,3 +53,44 @@ This is reproducible offline behavior, not a claim that the bundled PSL is curre
 See the [snapshot/version boundary](trusted-ingress.md#mechanisms-and-alignment).
 No upstream source or PSL asset is copied into this repository; locked packages
 retain their own licensing and provenance.
+
+## Filelock security follow-up (2026-11-10)
+
+The lock now selects filelock 4.2.1, the first patched release for the October
+advisories affecting 3.32.7. In particular,
+[GHSA-69hj-f68j-2879](https://github.com/tox-dev/filelock/security/advisories/GHSA-69hj-f68j-2879)
+describes Unix lock acquisition truncating an existing regular file at the lock
+path and changing its mode when an explicit mode is requested. Exploitation
+requires local filesystem access with the described rename/hard-link permissions;
+this is not evidence of exploitation through a reported email.
+
+The original LiteLLM 1.105.1 requires `filelock<4.0`, so a filelock-only update
+would not satisfy the optional model dependency graph. The resolver-compatible
+update uses LiteLLM 1.108.4 (`filelock<5`), plus its minimum boto3 1.43.117 and the
+matching botocore 1.43.117. All direct project pins and the other 86 package
+records are unchanged. CI-pinned uv 0.12.23 regenerated the lock (revision 5);
+no dependency override or ignored advisory is used. Distribution URLs, sizes and
+SHA-256 hashes for all four changed packages were checked against official PyPI
+metadata, which returned no known advisories for those exact versions. This is
+not a guarantee that those packages are free of defects.
+
+Seven bounded offline regression/control cases cover the installed FileLock and
+Hugging Face WeakFileLock consumer, existing-file and hard-link byte/mode
+preservation, ordinary contention/release, and the production resolver's disabled
+disk-lock path. The old filelock fails all four preservation cases; the fixed
+version passes all seven. These use synthetic files owned by the test process,
+not another user's files or a cross-account attack. Platform-specific Unix tests
+do not establish Windows or macOS acceptance. Full offline application checks also
+exercise the existing scripted model stubs; no provider or model is called.
+
+### Remaining DiskCache advisory
+
+The optional DSPy dependency still installs diskcache 5.6.3.
+[GHSA-w8v5-vhqr-4h9v](https://github.com/advisories/GHSA-w8v5-vhqr-4h9v)
+has no published patched version in the metadata checked for this update. It
+concerns default pickle deserialization when an attacker can write the cache
+directory. This update neither removes DiskCache nor claims it is safe. Core
+PSL processing uses tldextract's separate JSON cache implementation with disk
+caching disabled; that is not a remediation for DSPy's optional cache. Existing
+tests redirect DSPy cache state into the isolated test directory and deny network
+connections. No user's cache permissions or system settings were changed.
