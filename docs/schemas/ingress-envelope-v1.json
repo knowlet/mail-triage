@@ -1,0 +1,53 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "mail-triage.ingress-envelope/1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "algorithm": {
+      "const": "HMAC-SHA256",
+      "title": "Algorithm",
+      "type": "string"
+    },
+    "issuer_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Issuer Id",
+      "type": "string"
+    },
+    "key_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Key Id",
+      "type": "string"
+    },
+    "payload": {
+      "maxLength": 48000,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Payload",
+      "type": "string"
+    },
+    "mac": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Mac",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "algorithm",
+    "issuer_id",
+    "key_id",
+    "payload",
+    "mac"
+  ],
+  "title": "SignedEnvelopeV1",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mail-triage:ingress-envelope-v1"
+}

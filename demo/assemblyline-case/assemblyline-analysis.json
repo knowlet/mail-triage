@@ -1,0 +1,53 @@
+{
+  "status": "COMPLETED",
+  "reason": "completed_external_analysis",
+  "execution_mode": "MOCK",
+  "sid": "synthetic-submission",
+  "input_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+  "source_origin": "https://assemblyline.example.invalid",
+  "pinned_ip": "192.0.2.20",
+  "started_at": "2026-10-14T09:25:00.065808Z",
+  "finished_at": "2026-10-14T09:25:01.075050Z",
+  "polls": 2,
+  "requests": [
+    {
+      "operation": "completion",
+      "route": "/api/v4/submission/is_completed/synthetic-submission/",
+      "requested_at": "2026-10-14T09:25:00.066502Z",
+      "observed_at": "2026-10-14T09:25:00.067197Z",
+      "http_status": 200,
+      "response_sha256": "9fa378dde91df177e576b6e5cae978a8c9d507093a33b357765a2217a95a7e28"
+    },
+    {
+      "operation": "completion",
+      "route": "/api/v4/submission/is_completed/synthetic-submission/",
+      "requested_at": "2026-10-14T09:25:01.068509Z",
+      "observed_at": "2026-10-14T09:25:01.070140Z",
+      "http_status": 200,
+      "response_sha256": "17f802c6e8fbc63dcd573539ff275f9e5da17a91a48011683546c9fc3e75bb6a"
+    },
+    {
+      "operation": "full",
+      "route": "/api/v4/submission/full/synthetic-submission/",
+      "requested_at": "2026-10-14T09:25:01.070394Z",
+      "observed_at": "2026-10-14T09:25:01.074691Z",
+      "http_status": 200,
+      "response_sha256": "770f5a7ad991fda146d0c09d2394cf840ea655a434dee93d52dede5e98bfdf13"
+    }
+  ],
+  "analysis": {
+    "state": "completed",
+    "raw_max_score": 350,
+    "file_count": 1,
+    "error_count": 0,
+    "result_count": 1,
+    "returned_error_count": 0,
+    "missing_result_count": 0,
+    "missing_error_count": 0,
+    "missing_file_count": 0,
+    "partial_result_count": 0,
+    "untrusted_service_names": [
+      "SyntheticStatic"
+    ]
+  }
+}

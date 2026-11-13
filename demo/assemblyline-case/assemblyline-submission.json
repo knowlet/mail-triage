@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "execution_mode": "MOCK",
+  "endpoint_policy_sha256": "093d3d8c963e6d855bf7ee0398a0b83bd3fc4462711534eb3f0e317f54ad7807",
+  "receipt": {
+    "status": "OBSERVED",
+    "service": "assemblyline",
+    "execution_mode": "MOCK",
+    "reason": "untrusted_response_observed_no_safety_or_identity_verdict",
+    "input_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+    "response_sha256": "d08c096c847dd396604525c594cc4069ba63c588fbbd58622045f27263f6f9cc",
+    "source_origin": "https://assemblyline.example.invalid",
+    "observed_at": "2026-10-14T09:25:00.058816Z",
+    "external_id": "synthetic-submission"
+  }
+}

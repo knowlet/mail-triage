@@ -1,0 +1,20 @@
+[
+  {
+    "input": "malformed",
+    "exit_code": 2,
+    "case_created": false,
+    "diagnostic": {
+      "error": "input_rejected",
+      "detail": "Malformed MIME message (MissingHeaderBodySeparatorDefect)."
+    }
+  },
+  {
+    "input": "oversized",
+    "exit_code": 2,
+    "case_created": false,
+    "diagnostic": {
+      "error": "input_rejected",
+      "detail": "EML input exceeds max_raw_bytes."
+    }
+  }
+]

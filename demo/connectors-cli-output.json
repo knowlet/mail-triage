@@ -1,0 +1,14 @@
+{
+  "execution_mode": "MOCK",
+  "status": "COMPLETED",
+  "wrapper_sha256": "4d7cc39451d64bb77f4998626db6de730cfee7e50ba059802a416a812d8c2bf3",
+  "original_sha256": "4e31d9fb762cc859cf266a509e293fadbbd1e4a77feb41c1080f494e4fa10fca",
+  "authentication": "UNKNOWN",
+  "gateway_spam_rate": "UNKNOWN",
+  "assemblyline": "OBSERVED",
+  "sublime": "OBSERVED",
+  "pydantic_ai": "OBSERVED",
+  "model_backend": "MOCK",
+  "dspy_per_email": "NOT_RUN",
+  "output_directory": "demo/connectors-case"
+}

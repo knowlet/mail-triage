@@ -1,0 +1,434 @@
+{
+  "$defs": {
+    "AlignmentClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "const": "rfc7489-psl-private-v1",
+          "title": "Profile",
+          "type": "string"
+        },
+        "psl_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Psl Sha256",
+          "type": "string"
+        },
+        "spf": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ],
+          "title": "Spf",
+          "type": "string"
+        },
+        "dkim": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "UNKNOWN"
+          ],
+          "title": "Dkim",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile",
+        "psl_sha256",
+        "spf",
+        "dkim"
+      ],
+      "title": "AlignmentClaim",
+      "type": "object"
+    },
+    "DKIMResults": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "signatures": {
+          "items": {
+            "$ref": "#/$defs/DKIMSignature"
+          },
+          "maxItems": 32,
+          "title": "Signatures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "complete",
+        "signatures"
+      ],
+      "title": "DKIMResults",
+      "type": "object"
+    },
+    "DKIMSignature": {
+      "additionalProperties": false,
+      "properties": {
+        "signature_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Signature Id",
+          "type": "string"
+        },
+        "result": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "TEMPERROR",
+            "PERMERROR",
+            "UNKNOWN"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "domain": {
+          "maxLength": 253,
+          "minLength": 1,
+          "title": "Domain",
+          "type": "string"
+        },
+        "selector": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_.:-]+$",
+          "title": "Selector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "signature_id",
+        "result",
+        "domain",
+        "selector"
+      ],
+      "title": "DKIMSignature",
+      "type": "object"
+    },
+    "DMARCResult": {
+      "additionalProperties": false,
+      "properties": {
+        "result": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NONE",
+            "TEMPERROR",
+            "PERMERROR",
+            "UNKNOWN"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "policy_domain": {
+          "anyOf": [
+            {
+              "maxLength": 253,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Policy Domain"
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "quarantine",
+                "reject"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Policy"
+        },
+        "policy_record_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Policy Record Sha256"
+        },
+        "aspf": {
+          "enum": [
+            "s",
+            "r"
+          ],
+          "title": "Aspf",
+          "type": "string"
+        },
+        "adkim": {
+          "enum": [
+            "s",
+            "r"
+          ],
+          "title": "Adkim",
+          "type": "string"
+        }
+      },
+      "required": [
+        "result",
+        "policy_domain",
+        "policy",
+        "policy_record_sha256",
+        "aspf",
+        "adkim"
+      ],
+      "title": "DMARCResult",
+      "type": "object"
+    },
+    "MessageIdentity": {
+      "additionalProperties": false,
+      "description": "Out-of-band original identity, NOT the untrusted RFC Message-ID header.",
+      "properties": {
+        "tenant_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[\\x21-\\x7e]+$",
+          "title": "Tenant Id",
+          "type": "string"
+        },
+        "mailbox_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[\\x21-\\x7e]+$",
+          "title": "Mailbox Id",
+          "type": "string"
+        },
+        "message_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[\\x21-\\x7e]+$",
+          "title": "Message Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tenant_id",
+        "mailbox_id",
+        "message_id"
+      ],
+      "title": "MessageIdentity",
+      "type": "object"
+    },
+    "OriginalBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "identity": {
+          "$ref": "#/$defs/MessageIdentity"
+        },
+        "representation": {
+          "const": "original-mime-bytes",
+          "title": "Representation",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "raw_bytes": {
+          "maximum": 5242880,
+          "minimum": 1,
+          "title": "Raw Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "identity",
+        "representation",
+        "sha256",
+        "raw_bytes"
+      ],
+      "title": "OriginalBinding",
+      "type": "object"
+    },
+    "SPFResult": {
+      "additionalProperties": false,
+      "properties": {
+        "result": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "SOFTFAIL",
+            "NEUTRAL",
+            "NONE",
+            "TEMPERROR",
+            "PERMERROR",
+            "UNKNOWN"
+          ],
+          "title": "Result",
+          "type": "string"
+        },
+        "smtp_peer_ip": {
+          "anyOf": [
+            {
+              "maxLength": 45,
+              "minLength": 2,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Smtp Peer Ip"
+        },
+        "identity": {
+          "enum": [
+            "mailfrom",
+            "helo"
+          ],
+          "title": "Identity",
+          "type": "string"
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "maxLength": 253,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Domain"
+        },
+        "null_mail_from": {
+          "title": "Null Mail From",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "result",
+        "smtp_peer_ip",
+        "identity",
+        "domain",
+        "null_mail_from"
+      ],
+      "title": "SPFResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "mail-triage.ingress-assertion/1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "audience": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Audience",
+      "type": "string"
+    },
+    "event_id": {
+      "maxLength": 128,
+      "minLength": 16,
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "issued_at": {
+      "maximum": 253402300799,
+      "minimum": 0,
+      "title": "Issued At",
+      "type": "integer"
+    },
+    "expires_at": {
+      "maximum": 253402300799,
+      "minimum": 0,
+      "title": "Expires At",
+      "type": "integer"
+    },
+    "received_at": {
+      "maximum": 253402300799,
+      "minimum": 0,
+      "title": "Received At",
+      "type": "integer"
+    },
+    "boundary_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Boundary Id",
+      "type": "string"
+    },
+    "verifier_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "title": "Verifier Version",
+      "type": "string"
+    },
+    "evidence_origin": {
+      "const": "smtp-session-and-cryptographic-verifier",
+      "title": "Evidence Origin",
+      "type": "string"
+    },
+    "internal_auth_headers_sanitized": {
+      "title": "Internal Auth Headers Sanitized",
+      "type": "boolean"
+    },
+    "original": {
+      "$ref": "#/$defs/OriginalBinding"
+    },
+    "header_from_domain": {
+      "maxLength": 253,
+      "minLength": 1,
+      "title": "Header From Domain",
+      "type": "string"
+    },
+    "spf": {
+      "$ref": "#/$defs/SPFResult"
+    },
+    "dkim": {
+      "$ref": "#/$defs/DKIMResults"
+    },
+    "dmarc": {
+      "$ref": "#/$defs/DMARCResult"
+    },
+    "alignment": {
+      "$ref": "#/$defs/AlignmentClaim"
+    }
+  },
+  "required": [
+    "schema_version",
+    "audience",
+    "event_id",
+    "issued_at",
+    "expires_at",
+    "received_at",
+    "boundary_id",
+    "verifier_version",
+    "evidence_origin",
+    "internal_auth_headers_sanitized",
+    "original",
+    "header_from_domain",
+    "spf",
+    "dkim",
+    "dmarc",
+    "alignment"
+  ],
+  "title": "IngressAssertionV1",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mail-triage:ingress-assertion-v1"
+}
