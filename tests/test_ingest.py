@@ -201,3 +201,26 @@ def test_read_rejects_symlink_directory_missing_file_and_fifo(tmp_path: Path) ->
     for path in [symlink, tmp_path, tmp_path / "missing.eml", fifo]:
         with pytest.raises(IngestError):
             read_eml(path, Limits())
+
+
+@pytest.mark.parametrize("header", [b"From", b"To", b"Reply-To"])
+@pytest.mark.parametrize("nested", [False, True])
+def test_unclosed_address_domain_literal_fails_cleanly(header: bytes, nested: bool) -> None:
+    raw = header + b": a@[ \r\n\r\nbody"
+    if nested:
+        raw = multipart([b"Content-Type: message/rfc822\r\n\r\n" + raw])
+    with pytest.raises(IngestError):
+        parse_eml(raw)
+
+
+def test_unbound_local_error_outside_header_parser_is_not_hidden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import mail_triage.ingest as ingest
+
+    def broken_inventory(*args: object) -> None:
+        raise UnboundLocalError("application bug sentinel")
+
+    monkeypatch.setattr(ingest, "_inventory", broken_inventory)
+    with pytest.raises(UnboundLocalError, match="application bug sentinel"):
+        parse_eml(simple())

@@ -135,3 +135,23 @@ def test_case_writer_rejects_mismatched_provenance_before_writing(tmp_path: Path
         write_case(output, raw + b"modified", report)
     assert not output.exists()
     assert not list(tmp_path.glob(".mail-triage-*"))
+
+
+@pytest.mark.parametrize("header", [b"From", b"To", b"Reply-To"])
+def test_unclosed_domain_literal_is_rejected_without_case_or_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], header: bytes
+) -> None:
+    source = tmp_path / "malformed.eml"
+    source.write_bytes(header + b": a@[ \r\n\r\nPRIVATE_SYNTHETIC_BODY")
+    output = tmp_path / "rejected"
+
+    assert main(["triage", str(source), "--out", str(output)]) == 2
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    error = json.loads(captured.err)
+    assert error["error"] == "input_rejected"
+    assert "PRIVATE_SYNTHETIC_BODY" not in captured.err
+    assert "Traceback" not in captured.err
+    assert not output.exists()
+    assert not list(tmp_path.glob(".mail-triage-*"))
